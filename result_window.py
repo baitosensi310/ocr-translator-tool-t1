@@ -20,13 +20,13 @@ class ResultWindow:
         # OCR 引擎
         self.ocr_engine = OCREngine()
 
-        # ===== 先建立主視窗（很重要）=====
+        # ===== 建立主視窗 =====
         self.root = tk.Tk()
         self.root.title("OCR / 剪貼簿 翻譯工具")
         self.root.geometry("1050x720")
         self.root.attributes("-topmost", True)
 
-        # ===== Tkinter 變數一定要放在 root 建立後 =====
+        # ===== Tkinter 變數 =====
         self.mode_var = tk.StringVar(value="local")
         self.ocr_mode_var = tk.StringVar(value="easyocr")
         self.clipboard_monitor_var = tk.BooleanVar(value=True)
@@ -49,11 +49,21 @@ class ResultWindow:
         self.original_text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.original_text_area.insert(tk.END, self.original_text)
 
+        # ===== 原文區右鍵選單 =====
+        self.original_menu = tk.Menu(self.root, tearoff=0)
+        self.original_menu.add_command(label="複製選取", command=self.copy_selected_original_text)
+        self.original_menu.add_command(label="加入字典", command=self.add_to_dict)
+
+        # 右鍵綁定（Windows 常用）
+        self.original_text_area.bind("<Button-3>", self.show_original_menu)
+
+        # Ctrl+C 綁定
+        self.original_text_area.bind("<Control-c>", self.handle_ctrl_c_original)
+
         # ===== 設定列 =====
         mode_frame = tk.Frame(self.root)
         mode_frame.pack(pady=5)
 
-        # 翻譯模式
         mode_label = tk.Label(mode_frame, text="翻譯模式：")
         mode_label.pack(side=tk.LEFT)
 
@@ -73,8 +83,7 @@ class ResultWindow:
         )
         gpt_radio.pack(side=tk.LEFT, padx=5)
 
-        # OCR 模式
-        ocr_mode_label = tk.Label(mode_frame, text="   OCR模式：")
+        ocr_mode_label = tk.Label(mode_frame, text=" OCR模式：")
         ocr_mode_label.pack(side=tk.LEFT)
 
         easyocr_radio = tk.Radiobutton(
@@ -93,7 +102,6 @@ class ResultWindow:
         )
         mangaocr_radio.pack(side=tk.LEFT, padx=5)
 
-        # 剪貼簿監聽
         clipboard_check = tk.Checkbutton(
             mode_frame,
             text="自動監聽剪貼簿",
@@ -180,6 +188,16 @@ class ResultWindow:
         )
         self.translated_text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
+        # ===== 翻譯區右鍵選單 =====
+        self.translated_menu = tk.Menu(self.root, tearoff=0)
+        self.translated_menu.add_command(label="複製選取", command=self.copy_selected_translated_text)
+
+        # 右鍵綁定
+        self.translated_text_area.bind("<Button-3>", self.show_translated_menu)
+
+        # Ctrl+C 綁定
+        self.translated_text_area.bind("<Control-c>", self.handle_ctrl_c_translated)
+
         # 啟動剪貼簿監聽
         self.start_clipboard_monitor()
 
@@ -201,6 +219,7 @@ class ResultWindow:
 
         self.translated_text_area.delete("1.0", tk.END)
         self.translated_text_area.insert(tk.END, self.translated_text)
+
         self.set_status("翻譯完成")
 
     def add_to_dict(self):
@@ -289,6 +308,58 @@ class ResultWindow:
         self.root.clipboard_append(current_text)
         self.root.update()
         self.set_status("已複製翻譯")
+
+    def show_original_menu(self, event):
+        try:
+            self.original_text_area.focus_set()
+            self.original_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.original_menu.grab_release()
+
+    def show_translated_menu(self, event):
+        try:
+            self.translated_text_area.focus_set()
+            self.translated_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.translated_menu.grab_release()
+
+    def copy_selected_original_text(self):
+        try:
+            selected_text = self.original_text_area.selection_get()
+
+            if selected_text.strip():
+                self.root.clipboard_clear()
+                self.root.clipboard_append(selected_text)
+                self.root.update()
+                self.set_status("已複製原文選取內容")
+        except:
+            messagebox.showwarning("提示", "請先在原文區選取文字")
+
+    def copy_selected_translated_text(self):
+        try:
+            selected_text = self.translated_text_area.selection_get()
+
+            if selected_text.strip():
+                self.root.clipboard_clear()
+                self.root.clipboard_append(selected_text)
+                self.root.update()
+                self.set_status("已複製翻譯選取內容")
+        except:
+            messagebox.showwarning("提示", "請先在翻譯區選取文字")
+
+    def handle_ctrl_c_original(self, event=None):
+        try:
+            self.copy_selected_original_text()
+        except:
+            pass
+        return "break"
+
+    def handle_ctrl_c_translated(self, event=None):
+        try:
+            self.copy_selected_translated_text()
+        except:
+            pass
+        return "break"
 
     def show(self):
         self.root.mainloop()

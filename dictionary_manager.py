@@ -1,6 +1,8 @@
 import json
 import os
 
+from jmdict_loader import search_word, extract_info
+
 FILE_PATH = "dictionary.json"
 
 
@@ -121,10 +123,21 @@ def add_word(word):
             return "已存在"
 
     new_entry = create_empty_entry(word)
+
+    # ===== 查 JMdict =====
+    results = search_word(word)
+
+    if results:
+        info = extract_info(results[0])
+
+        new_entry["讀音"] = info["讀音"]
+        new_entry["英文"] = info["英文"]
+        new_entry["詞性"] = info["詞性"]
+
     data.append(new_entry)
     save_dictionary(data)
 
-    return "已加入字典"
+    return "已加入字典（已自動補資料）" if results else "已加入字典（無字典資料）"
 
 
 def update_word(word, reading=None, chinese=None, english=None, part_of_speech=None,
