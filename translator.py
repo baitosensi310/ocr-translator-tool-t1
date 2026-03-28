@@ -2,17 +2,17 @@ from deep_translator import GoogleTranslator
 from openai import OpenAI
 
 # ⚠️ 這裡換成你的 OpenAI API Key
-client = OpenAI(api_key="你的APIKEY")
+client = OpenAI(api_key="你的APIKEY") #key argument
 
 
 def translate_local(text):
-    text = text.strip()
+    text = text.strip() #去除前後空白
 
     if not text:
         return "沒有可翻譯的文字"
 
     try:
-        return GoogleTranslator(source="auto", target="zh-TW").translate(text)
+        return GoogleTranslator(source="auto", target="zh-TW").translate(text)#翻譯成繁體中文
     except Exception as e:
         return f"本地翻譯失敗：{e}"
 
@@ -24,7 +24,7 @@ def translate_gpt(text):
         return "沒有可翻譯的文字"
 
     try:
-        response = client.chat.completions.create(
+        response = client.chat.completions.create( #使用聊天模型進行翻譯
             model="gpt-4o-mini",
             messages=[
                 {

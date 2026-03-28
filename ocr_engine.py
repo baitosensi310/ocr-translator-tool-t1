@@ -13,15 +13,15 @@ class OCREngine:
 
     def read_easyocr(self, image_path):
         if self.easy_reader is None:
-            self.easy_reader = easyocr.Reader(["ja", "en"])
+            self.easy_reader = easyocr.Reader(["ja", "en"]) #texts = ["你好", "世界"]
 
         result = self.easy_reader.readtext(image_path)
 
         texts = []
         for item in result:
-            texts.append(item[1])
+            texts.append(item[1]) 
 
-        return "".join(texts)
+        return "".join(texts) #"你好世界" 分隔符（separator）
 
     def read_mangaocr(self, image_path):
         if MangaOcr is None:
