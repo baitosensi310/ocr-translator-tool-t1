@@ -14,8 +14,14 @@ class ResultWindow:
         self.original_text = text
         self.translated_text = ""
 
-        # 記錄上一次剪貼簿內容，避免重複翻譯
+        # 記錄上一次讀到的剪貼簿內容
         self.last_clipboard_text = ""
+
+        # 避免程式一啟動就重複觸發
+        try:
+            self.last_clipboard_text = pyperclip.paste()
+        except:
+            self.last_clipboard_text = ""
 
         # OCR 引擎
         self.ocr_engine = OCREngine()
@@ -30,6 +36,7 @@ class ResultWindow:
         self.mode_var = tk.StringVar(value="local")
         self.ocr_mode_var = tk.StringVar(value="easyocr")
         self.clipboard_monitor_var = tk.BooleanVar(value=True)
+        self.auto_translate_var = tk.BooleanVar(value=True)
 
         # ===== 原文標題 =====
         original_label = tk.Label(
@@ -54,10 +61,7 @@ class ResultWindow:
         self.original_menu.add_command(label="複製選取", command=self.copy_selected_original_text)
         self.original_menu.add_command(label="加入字典", command=self.add_to_dict)
 
-        # 右鍵綁定（Windows 常用）
         self.original_text_area.bind("<Button-3>", self.show_original_menu)
-
-        # Ctrl+C 綁定
         self.original_text_area.bind("<Control-c>", self.handle_ctrl_c_original)
 
         # ===== 設定列 =====
@@ -104,10 +108,17 @@ class ResultWindow:
 
         clipboard_check = tk.Checkbutton(
             mode_frame,
-            text="自動監聽剪貼簿",
+            text="監聽 Ctrl+C 剪貼簿",
             variable=self.clipboard_monitor_var
         )
         clipboard_check.pack(side=tk.LEFT, padx=15)
+
+        auto_translate_check = tk.Checkbutton(
+            mode_frame,
+            text="自動翻譯",
+            variable=self.auto_translate_var
+        )
+        auto_translate_check.pack(side=tk.LEFT, padx=5)
 
         # ===== 按鈕區 =====
         button_frame = tk.Frame(self.root)
@@ -192,10 +203,7 @@ class ResultWindow:
         self.translated_menu = tk.Menu(self.root, tearoff=0)
         self.translated_menu.add_command(label="複製選取", command=self.copy_selected_translated_text)
 
-        # 右鍵綁定
         self.translated_text_area.bind("<Button-3>", self.show_translated_menu)
-
-        # Ctrl+C 綁定
         self.translated_text_area.bind("<Control-c>", self.handle_ctrl_c_translated)
 
         # 啟動剪貼簿監聽
@@ -249,7 +257,9 @@ class ResultWindow:
         self.last_clipboard_text = clipboard_text
         self.update_original_text(clipboard_text)
         self.set_status("已手動讀取剪貼簿")
-        self.do_translate()
+
+        if self.auto_translate_var.get():
+            self.do_translate()
 
     def run_ocr(self):
         selector = ScreenSelector()
@@ -268,7 +278,9 @@ class ResultWindow:
 
             self.update_original_text(final_text)
             self.set_status(f"OCR 完成（{ocr_mode}）")
-            self.do_translate()
+
+            if self.auto_translate_var.get():
+                self.do_translate()
 
         except Exception as e:
             messagebox.showerror("錯誤", f"OCR 失敗：{e}")
@@ -287,13 +299,15 @@ class ResultWindow:
             if clipboard_text.strip() and clipboard_text != self.last_clipboard_text:
                 self.last_clipboard_text = clipboard_text
                 self.update_original_text(clipboard_text)
-                self.set_status("偵測到新的剪貼簿文字")
-                self.do_translate()
+                self.set_status("已抓到新的 Ctrl+C 文字")
 
-        self.root.after(800, self.check_clipboard)
+                if self.auto_translate_var.get():
+                    self.do_translate()
+
+        self.root.after(300, self.check_clipboard)
 
     def start_clipboard_monitor(self):
-        self.root.after(800, self.check_clipboard)
+        self.root.after(300, self.check_clipboard)
 
     def copy_original_text(self):
         current_text = self.original_text_area.get("1.0", tk.END)

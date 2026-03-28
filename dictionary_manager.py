@@ -1,8 +1,6 @@
 import json
 import os
 
-from jmdict_loader import search_word, extract_info
-
 FILE_PATH = "dictionary.json"
 
 
@@ -20,30 +18,7 @@ def create_empty_entry(word):
 
 
 def normalize_entry(item):
-    """
-    Convert old dictionary format to new format.
-
-    Old format example:
-    {
-        "word": "専門",
-        "meaning": "專門",
-        "tag": "N2"
-    }
-
-    New format example:
-    {
-        "單字": "専門",
-        "讀音": "",
-        "中文": "專門",
-        "英文": "",
-        "詞性": "",
-        "分類": [],
-        "例句": [],
-        "用法": ""
-    }
-    """
-
-    # Already new format
+    # 已經是新格式
     if "單字" in item:
         return {
             "單字": str(item.get("單字", "")).strip(),
@@ -56,7 +31,7 @@ def normalize_entry(item):
             "用法": str(item.get("用法", "")).strip()
         }
 
-    # Convert old format to new format
+    # 舊格式轉新格式
     word = str(item.get("word", "")).strip()
     meaning = str(item.get("meaning", "")).strip()
     tag = str(item.get("tag", "")).strip()
@@ -80,7 +55,7 @@ def load_dictionary():
     try:
         with open(FILE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except:
+    except Exception:
         return []
 
     if not isinstance(data, list):
@@ -98,7 +73,6 @@ def load_dictionary():
 
         new_data.append(normalize_entry(item))
 
-    # Auto-save if old format was found
     if has_old_format:
         save_dictionary(new_data)
 
@@ -123,21 +97,10 @@ def add_word(word):
             return "已存在"
 
     new_entry = create_empty_entry(word)
-
-    # ===== 查 JMdict =====
-    results = search_word(word)
-
-    if results:
-        info = extract_info(results[0])
-
-        new_entry["讀音"] = info["讀音"]
-        new_entry["英文"] = info["英文"]
-        new_entry["詞性"] = info["詞性"]
-
     data.append(new_entry)
     save_dictionary(data)
 
-    return "已加入字典（已自動補資料）" if results else "已加入字典（無字典資料）"
+    return "已加入字典"
 
 
 def update_word(word, reading=None, chinese=None, english=None, part_of_speech=None,
@@ -159,16 +122,10 @@ def update_word(word, reading=None, chinese=None, english=None, part_of_speech=N
                 item["詞性"] = str(part_of_speech).strip()
 
             if categories is not None:
-                if isinstance(categories, list):
-                    item["分類"] = categories
-                else:
-                    item["分類"] = []
+                item["分類"] = categories if isinstance(categories, list) else []
 
             if examples is not None:
-                if isinstance(examples, list):
-                    item["例句"] = examples
-                else:
-                    item["例句"] = []
+                item["例句"] = examples if isinstance(examples, list) else []
 
             if usage is not None:
                 item["用法"] = str(usage).strip()
