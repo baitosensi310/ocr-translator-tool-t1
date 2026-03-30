@@ -13,39 +13,20 @@ class ResultPopup:
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("翻譯結果")
-        self.window.geometry("720x420+360+140")
-        self.window.minsize(520, 300)
+        self.window.geometry("980x520+360+140")
+        self.window.minsize(720, 360)
         self.window.configure(bg="#F5EAD9")
         self.window.attributes("-topmost", True)
 
         self.build_ui()
-        self.fill_source_text()
-        self.do_translate()
-        
-    def update_content(self, new_source_text):
-        self.source_text = new_source_text.strip()
-        self.translated_text = ""
+        self.update_content(self.source_text)
 
-        self.source_textbox.delete("1.0", tk.END)
-        self.translated_textbox.delete("1.0", tk.END)
-
-        self.source_textbox.insert("1.0", self.source_text)
-        self.do_translate()
-
-    # =========================================================
-    # UI
-    # =========================================================
     def build_ui(self):
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
         # 上方按鈕列
-        self.top_bar = tk.Frame(
-            self.main_frame,
-            bg="#E7D6BE",
-            bd=1,
-            relief="flat"
-        )
+        self.top_bar = tk.Frame(self.main_frame, bg="#E7D6BE")
         self.top_bar.pack(fill=tk.X, pady=(0, 10))
 
         self.add_dict_button = tk.Button(
@@ -117,7 +98,7 @@ class ResultPopup:
         self.hide_toolbar_button.pack(side=tk.LEFT, padx=8, pady=8)
 
         spacer = tk.Frame(self.top_bar, bg="#E7D6BE")
-        spacer.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        spacer.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         self.close_button = tk.Button(
             self.top_bar,
@@ -136,27 +117,22 @@ class ResultPopup:
         )
         self.close_button.pack(side=tk.RIGHT, padx=8, pady=8)
 
-        # 中間內容區
-        self.content_frame = tk.Frame(self.main_frame, bg="#F5EAD9")
-        self.content_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.left_panel = tk.Frame(
-            self.content_frame,
-            bg="#E7D6BE",
-            bd=1,
-            relief="flat"
+        # 中間內容區：可拖拉分隔線
+        self.content_paned = tk.PanedWindow(
+            self.main_frame,
+            orient=tk.HORIZONTAL,
+            bg="#F5EAD9",
+            sashwidth=12,
+            sashrelief="flat",
+            bd=0,
+            highlightthickness=0
         )
-        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
+        self.content_paned.pack(fill=tk.BOTH, expand=True)
 
-        self.right_panel = tk.Frame(
-            self.content_frame,
-            bg="#E7D6BE",
-            bd=1,
-            relief="flat"
-        )
-        self.right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
+        # 左邊原文區
+        self.left_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
+        self.content_paned.add(self.left_panel, minsize=260)
 
-        # 原文區
         self.source_title = tk.Label(
             self.left_panel,
             text="原文",
@@ -182,7 +158,10 @@ class ResultPopup:
         )
         self.source_textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # 翻譯區
+        # 右邊翻譯區
+        self.right_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
+        self.content_paned.add(self.right_panel, minsize=260)
+
         self.translated_title = tk.Label(
             self.right_panel,
             text="翻譯",
@@ -221,29 +200,41 @@ class ResultPopup:
         )
         self.status_label.pack(fill=tk.X, pady=(10, 0))
 
-    # =========================================================
-    # 功能
-    # =========================================================
-    def fill_source_text(self):
+        # 預設讓翻譯區不要太窄
+        self.window.after(120, lambda: self.content_paned.sash_place(0, 520, 0))
+
+    def update_content(self, new_source_text):
+        self.source_text = new_source_text.strip()
+        self.translated_text = ""
+
         self.source_textbox.delete("1.0", tk.END)
+        self.translated_textbox.delete("1.0", tk.END)
+
         self.source_textbox.insert("1.0", self.source_text)
 
-    def do_translate(self):
         if not self.source_text:
+            self.translated_textbox.insert("1.0", "沒有可翻譯文字")
             self.set_status("沒有可翻譯文字")
             return
 
+        self.do_translate()
+
+    def do_translate(self):
         self.set_status("正在翻譯...")
-        self.window.update()
+        self.window.update_idletasks()
 
         try:
-            self.translated_text = translate(self.source_text, "local")
+            result = translate(self.source_text, "local")
+            self.translated_text = result if result else "翻譯結果為空"
+
             self.translated_textbox.delete("1.0", tk.END)
             self.translated_textbox.insert("1.0", self.translated_text)
+
             self.set_status("翻譯完成")
         except Exception as e:
+            self.translated_text = f"翻譯失敗：{e}"
             self.translated_textbox.delete("1.0", tk.END)
-            self.translated_textbox.insert("1.0", f"翻譯失敗：{e}")
+            self.translated_textbox.insert("1.0", self.translated_text)
             self.set_status("翻譯失敗")
 
     def add_current_to_dict(self):
@@ -259,7 +250,6 @@ class ResultPopup:
         text = self.source_textbox.get("1.0", tk.END).strip()
         if not text:
             return
-
         self.window.clipboard_clear()
         self.window.clipboard_append(text)
         self.window.update()
@@ -269,7 +259,6 @@ class ResultPopup:
         text = self.translated_textbox.get("1.0", tk.END).strip()
         if not text:
             return
-
         self.window.clipboard_clear()
         self.window.clipboard_append(text)
         self.window.update()
@@ -286,4 +275,5 @@ class ResultPopup:
         self.status_label.config(text=f"狀態：{text}")
 
     def show(self):
+        self.window.lift()
         self.window.focus_force()
