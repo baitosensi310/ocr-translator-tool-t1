@@ -6,155 +6,274 @@ from dictionary_manager import add_word
 
 
 class ResultPopup:
-    def __init__(self, parent, source_text, translate_mode="local"):
+    def __init__(self, parent, source_text):
         self.parent = parent
         self.source_text = source_text.strip()
-        self.translate_mode = translate_mode
         self.translated_text = ""
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("翻譯結果")
-        self.window.geometry("520x320+420+180")
-        self.window.minsize(420, 260)
-        self.window.attributes("-topmost", True)
+        self.window.geometry("720x420+360+140")
+        self.window.minsize(520, 300)
         self.window.configure(bg="#F5EAD9")
-
-        self.COLOR_BG_MAIN = "#F5EAD9"
-        self.COLOR_BG_PANEL = "#E7D6BE"
-        self.COLOR_BG_TEXT = "#FBF6EE"
-        self.COLOR_TITLE = "#4A2F21"
-        self.COLOR_TEXT = "#3A2A1F"
-        self.COLOR_BORDER = "#8B6A4E"
-        self.COLOR_BUTTON = "#8B5E3C"
-        self.COLOR_BUTTON_HOVER = "#A06A43"
-        self.COLOR_BUTTON_TEXT = "#FFF8EE"
+        self.window.attributes("-topmost", True)
 
         self.build_ui()
+        self.fill_source_text()
         self.do_translate()
 
+    # =========================================================
+    # UI
+    # =========================================================
     def build_ui(self):
-        main = tk.Frame(self.window, bg=self.COLOR_BG_MAIN)
-        main.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
-        container = tk.Frame(
-            main,
-            bg=self.COLOR_BG_PANEL,
+        # 上方按鈕列
+        self.top_bar = tk.Frame(
+            self.main_frame,
+            bg="#E7D6BE",
             bd=1,
-            relief="solid",
-            highlightbackground=self.COLOR_BORDER,
-            highlightthickness=1
+            relief="flat"
         )
-        container.pack(fill=tk.BOTH, expand=True)
+        self.top_bar.pack(fill=tk.X, pady=(0, 10))
 
-        title = tk.Label(
-            container,
-            text="翻譯結果",
-            font=("Microsoft JhengHei", 16, "bold"),
-            bg=self.COLOR_BG_PANEL,
-            fg=self.COLOR_TITLE,
-            pady=10
-        )
-        title.pack()
-
-        source_label = tk.Label(
-            container,
-            text="原文",
-            font=("Microsoft JhengHei", 11, "bold"),
-            bg=self.COLOR_BG_PANEL,
-            fg=self.COLOR_TITLE,
-            anchor="w"
-        )
-        source_label.pack(fill=tk.X, padx=14, pady=(0, 4))
-
-        self.source_textbox = tk.Text(
-            container,
-            height=5,
-            font=("Microsoft JhengHei", 11),
-            bg=self.COLOR_BG_TEXT,
-            fg=self.COLOR_TEXT,
-            relief="flat",
-            wrap=tk.WORD
-        )
-        self.source_textbox.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 10))
-        self.source_textbox.insert("1.0", self.source_text)
-
-        translated_label = tk.Label(
-            container,
-            text="翻譯",
-            font=("Microsoft JhengHei", 11, "bold"),
-            bg=self.COLOR_BG_PANEL,
-            fg=self.COLOR_TITLE,
-            anchor="w"
-        )
-        translated_label.pack(fill=tk.X, padx=14, pady=(0, 4))
-
-        self.translated_textbox = tk.Text(
-            container,
-            height=5,
-            font=("Microsoft JhengHei", 11),
-            bg=self.COLOR_BG_TEXT,
-            fg=self.COLOR_TEXT,
-            relief="flat",
-            wrap=tk.WORD
-        )
-        self.translated_textbox.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 10))
-
-        button_bar = tk.Frame(container, bg=self.COLOR_BG_PANEL)
-        button_bar.pack(fill=tk.X, padx=14, pady=(0, 12))
-
-        self.create_button(button_bar, "加入字典", self.add_current_to_dictionary).pack(side=tk.LEFT, padx=(0, 8))
-        self.create_button(button_bar, "複製原文", self.copy_source).pack(side=tk.LEFT, padx=8)
-        self.create_button(button_bar, "複製翻譯", self.copy_translated).pack(side=tk.LEFT, padx=8)
-        self.create_button(button_bar, "關閉", self.window.destroy).pack(side=tk.RIGHT)
-
-    def create_button(self, parent, text, command):
-        btn = tk.Button(
-            parent,
-            text=text,
-            command=command,
+        self.add_dict_button = tk.Button(
+            self.top_bar,
+            text="加入字典",
+            command=self.add_current_to_dict,
             font=("Microsoft JhengHei", 10, "bold"),
-            bg=self.COLOR_BUTTON,
-            fg=self.COLOR_BUTTON_TEXT,
-            activebackground=self.COLOR_BUTTON_HOVER,
-            activeforeground=self.COLOR_BUTTON_TEXT,
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
             relief="flat",
             bd=0,
-            padx=12,
+            padx=14,
             pady=7,
             cursor="hand2"
         )
-        btn.bind("<Enter>", lambda e, b=btn: b.config(bg=self.COLOR_BUTTON_HOVER))
-        btn.bind("<Leave>", lambda e, b=btn: b.config(bg=self.COLOR_BUTTON))
-        return btn
+        self.add_dict_button.pack(side=tk.LEFT, padx=8, pady=8)
+
+        self.copy_source_button = tk.Button(
+            self.top_bar,
+            text="複製原文",
+            command=self.copy_source,
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=7,
+            cursor="hand2"
+        )
+        self.copy_source_button.pack(side=tk.LEFT, padx=8, pady=8)
+
+        self.copy_translated_button = tk.Button(
+            self.top_bar,
+            text="複製翻譯",
+            command=self.copy_translated,
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=7,
+            cursor="hand2"
+        )
+        self.copy_translated_button.pack(side=tk.LEFT, padx=8, pady=8)
+
+        self.hide_toolbar_button = tk.Button(
+            self.top_bar,
+            text="隱藏工具列",
+            command=self.hide_toolbar,
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=7,
+            cursor="hand2"
+        )
+        self.hide_toolbar_button.pack(side=tk.LEFT, padx=8, pady=8)
+
+        spacer = tk.Frame(self.top_bar, bg="#E7D6BE")
+        spacer.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        self.close_button = tk.Button(
+            self.top_bar,
+            text="關閉",
+            command=self.window.destroy,
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=7,
+            cursor="hand2"
+        )
+        self.close_button.pack(side=tk.RIGHT, padx=8, pady=8)
+
+        # 中間內容區
+        self.content_frame = tk.Frame(self.main_frame, bg="#F5EAD9")
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.left_panel = tk.Frame(
+            self.content_frame,
+            bg="#E7D6BE",
+            bd=1,
+            relief="flat"
+        )
+        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
+
+        self.right_panel = tk.Frame(
+            self.content_frame,
+            bg="#E7D6BE",
+            bd=1,
+            relief="flat"
+        )
+        self.right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
+
+        # 原文區
+        self.source_title = tk.Label(
+            self.left_panel,
+            text="原文",
+            font=("Microsoft JhengHei", 13, "bold"),
+            bg="#E7D6BE",
+            fg="#4A2F21",
+            anchor="w",
+            padx=12,
+            pady=10
+        )
+        self.source_title.pack(fill=tk.X)
+
+        self.source_textbox = tk.Text(
+            self.left_panel,
+            wrap=tk.WORD,
+            font=("Microsoft JhengHei", 12),
+            bg="#FBF6EE",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=12
+        )
+        self.source_textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        # 翻譯區
+        self.translated_title = tk.Label(
+            self.right_panel,
+            text="翻譯",
+            font=("Microsoft JhengHei", 13, "bold"),
+            bg="#E7D6BE",
+            fg="#4A2F21",
+            anchor="w",
+            padx=12,
+            pady=10
+        )
+        self.translated_title.pack(fill=tk.X)
+
+        self.translated_textbox = tk.Text(
+            self.right_panel,
+            wrap=tk.WORD,
+            font=("Microsoft JhengHei", 12),
+            bg="#FBF6EE",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=12
+        )
+        self.translated_textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        # 狀態列
+        self.status_label = tk.Label(
+            self.main_frame,
+            text="狀態：準備完成",
+            font=("Microsoft JhengHei", 10),
+            bg="#E7D6BE",
+            fg="#6A4A35",
+            anchor="w",
+            padx=10,
+            pady=8
+        )
+        self.status_label.pack(fill=tk.X, pady=(10, 0))
+
+    # =========================================================
+    # 功能
+    # =========================================================
+    def fill_source_text(self):
+        self.source_textbox.delete("1.0", tk.END)
+        self.source_textbox.insert("1.0", self.source_text)
 
     def do_translate(self):
         if not self.source_text:
-            self.translated_text = "沒有可翻譯的文字"
-        else:
-            self.translated_text = translate(self.source_text, self.translate_mode)
-
-        self.translated_textbox.delete("1.0", tk.END)
-        self.translated_textbox.insert("1.0", self.translated_text)
-
-    def add_current_to_dictionary(self):
-        word = self.source_textbox.get("1.0", tk.END).strip()
-        if not word:
-            messagebox.showwarning("提示", "沒有可加入字典的文字")
+            self.set_status("沒有可翻譯文字")
             return
 
-        result = add_word(word)
-        messagebox.showinfo("字典", result)
+        self.set_status("正在翻譯...")
+        self.window.update()
+
+        try:
+            self.translated_text = translate(self.source_text, "local")
+            self.translated_textbox.delete("1.0", tk.END)
+            self.translated_textbox.insert("1.0", self.translated_text)
+            self.set_status("翻譯完成")
+        except Exception as e:
+            self.translated_textbox.delete("1.0", tk.END)
+            self.translated_textbox.insert("1.0", f"翻譯失敗：{e}")
+            self.set_status("翻譯失敗")
+
+    def add_current_to_dict(self):
+        try:
+            result = add_word(self.source_text)
+            messagebox.showinfo("字典", result, parent=self.window)
+            self.set_status(f"字典：{result}")
+        except Exception as e:
+            messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
+            self.set_status("加入字典失敗")
 
     def copy_source(self):
         text = self.source_textbox.get("1.0", tk.END).strip()
-        if text:
-            self.window.clipboard_clear()
-            self.window.clipboard_append(text)
-            self.window.update()
+        if not text:
+            return
+
+        self.window.clipboard_clear()
+        self.window.clipboard_append(text)
+        self.window.update()
+        self.set_status("已複製原文")
 
     def copy_translated(self):
         text = self.translated_textbox.get("1.0", tk.END).strip()
-        if text:
-            self.window.clipboard_clear()
-            self.window.clipboard_append(text)
-            self.window.update()
+        if not text:
+            return
+
+        self.window.clipboard_clear()
+        self.window.clipboard_append(text)
+        self.window.update()
+        self.set_status("已複製翻譯")
+
+    def hide_toolbar(self):
+        try:
+            self.parent.withdraw()
+            self.set_status("已隱藏工具列")
+        except Exception:
+            self.set_status("隱藏工具列失敗")
+
+    def set_status(self, text):
+        self.status_label.config(text=f"狀態：{text}")
+
+    def show(self):
+        self.window.focus_force()
