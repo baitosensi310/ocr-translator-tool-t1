@@ -1,4 +1,5 @@
-from result_window import ResultWindow
+from toolbar_window import ToolbarWindow
 
-window = ResultWindow("")
-window.show()
+if __name__ == "__main__":
+    app = ToolbarWindow()
+    app.show()
