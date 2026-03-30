@@ -250,6 +250,7 @@ class ResultPopup:
         text = self.source_textbox.get("1.0", tk.END).strip()
         if not text:
             return
+
         self.window.clipboard_clear()
         self.window.clipboard_append(text)
         self.window.update()
@@ -259,6 +260,7 @@ class ResultPopup:
         text = self.translated_textbox.get("1.0", tk.END).strip()
         if not text:
             return
+
         self.window.clipboard_clear()
         self.window.clipboard_append(text)
         self.window.update()

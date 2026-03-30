@@ -6,7 +6,7 @@ from ocr_engine import OCREngine
 from select_area import ScreenSelector
 from result_popup import ResultPopup
 from dictionary_home import DictionaryHome
-from dictionary_manager import load_dictionary, save_dictionary
+
 
 class ToolbarWindow:
     def __init__(self):
@@ -126,9 +126,10 @@ class ToolbarWindow:
     def open_dictionary(self):
         if self.dictionary_home is not None:
             try:
-                self.dictionary_home.window.lift()
-                self.dictionary_home.window.focus_force()
-                return
+                if self.dictionary_home.window.winfo_exists():
+                    self.dictionary_home.window.lift()
+                    self.dictionary_home.window.focus_force()
+                    return
             except Exception:
                 self.dictionary_home = None
 

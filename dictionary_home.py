@@ -1,11 +1,13 @@
 import tkinter as tk
 from tkinter import messagebox
-from dictionary_manager import load_dictionary
+from dictionary_manager import load_dictionary, save_dictionary
+
 
 class DictionaryHome:
     def __init__(self, parent):
         self.parent = parent
         self.selected_language = None
+
         self.dictionary_data = []
         self.filtered_dictionary_data = []
         self.current_entry = None
@@ -17,8 +19,8 @@ class DictionaryHome:
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("字典主頁")
-        self.window.geometry("1100x720+300+120")
-        self.window.minsize(900, 560)
+        self.window.geometry("1180x760+260+120")
+        self.window.minsize(980, 620)
         self.window.configure(bg="#F5EAD9")
 
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
@@ -26,148 +28,19 @@ class DictionaryHome:
 
         self.build_home_page()
 
-        def get_all_tags(self):
-            tags = set()
-
-        for item in self.dictionary_data:
-            item_tags = item.get("分類", [])
-            if isinstance(item_tags, list):
-                for tag in item_tags:
-                    tag_text = str(tag).strip()
-                    if tag_text:
-                        tags.add(tag_text)
-
-        return ["全部"] + sorted(tags)
-
-    def apply_collection_filters(self):
-        keyword = self.collection_search_var.get().strip().lower()
-        selected_tag = self.collection_tag_var.get().strip()
-
-        result = []
-
-        for item in self.dictionary_data:
-            word = str(item.get("單字", "")).strip()
-            chinese = str(item.get("中文", "")).strip()
-            reading = str(item.get("讀音", "")).strip()
-            english = str(item.get("英文", "")).strip()
-            tags = item.get("分類", [])
-
-            if not isinstance(tags, list):
-                tags = []
-
-            full_text = f"{word} {chinese} {reading} {english} {' '.join(tags)}".lower()
-
-            # 關鍵字篩選
-            if keyword and keyword not in full_text:
-                continue
-
-            # tag 篩選
-            if selected_tag != "全部" and selected_tag not in tags:
-                continue
-
-            result.append(item)
-
-        self.filtered_dictionary_data = result
-
-    def get_collection_total_pages(self):
-        if not self.filtered_dictionary_data:
-            return 1
-        return (len(self.filtered_dictionary_data) - 1) // self.collection_page_size + 1
-
-    def get_collection_page_data(self):
-        start = (self.collection_page - 1) * self.collection_page_size
-        end = start + self.collection_page_size
-        return self.filtered_dictionary_data[start:end]
-
-    def refresh_collection_tag_menu(self):
-        if not hasattr(self, "collection_tag_menu"):
-            return
-
-        menu = self.collection_tag_menu["menu"]
-        menu.delete(0, "end")
-
-        tag_list = self.get_all_tags()
-
-        for tag in tag_list:
-            menu.add_command(
-                label=tag,
-                command=lambda value=tag: self.set_collection_tag(value)
-            )
-
-        if self.collection_tag_var.get() not in tag_list:
-            self.collection_tag_var.set("全部")
-
-    def set_collection_tag(self, value):
-        self.collection_tag_var.set(value)
-        self.collection_page = 1
-        self.refresh_collection_list()
-
-    def on_collection_search_changed(self, event=None):
-        self.collection_page = 1
-        self.refresh_collection_list()
-
-    def prev_collection_page(self):
-        if self.collection_page > 1:
-            self.collection_page -= 1
-            self.refresh_collection_list()
-
-    def next_collection_page(self):
-        total_pages = self.get_collection_total_pages()
-        if self.collection_page < total_pages:
-            self.collection_page += 1
-            self.refresh_collection_list()
-
-    def save_collection_entry(self):
-        if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
-            return
-
-        original = self.collection_original_text.get("1.0", tk.END).strip()
-        translation = self.collection_translation_text.get("1.0", tk.END).strip()
-        reading = self.collection_reading_entry.get().strip()
-
-        tag_raw = ""
-        if hasattr(self, "collection_tag_entry"):
-            tag_raw = self.collection_tag_entry.get().strip()
-
-        tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
-
-        data = load_dictionary()
-
-        target_index = None
-        for i, item in enumerate(data):
-            if item.get("單字", "") == self.current_entry.get("單字", ""):
-                target_index = i
-                break
-
-        if target_index is None:
-            messagebox.showerror("錯誤", "找不到要儲存的單字")
-            return
-
-        data[target_index]["單字"] = original
-        data[target_index]["中文"] = translation
-        data[target_index]["讀音"] = reading
-        data[target_index]["分類"] = tags
-
-        save_dictionary(data)
-
-        self.current_entry = data[target_index]
-        self.refresh_collection_list()
-        messagebox.showinfo("成功", "已儲存單字內容")
-
     # =========================================================
-    # 共用樣式
+    # 共用
     # =========================================================
     def clear_page(self):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-    def create_soft_button(self, parent, text, command, width=16, big=False):
-        font_size = 12 if not big else 15
-        pady = 10 if not big else 14
-        padx = 16 if not big else 22
+    def create_soft_button(self, parent, text, command, width=12, big=False):
+        font_size = 11 if not big else 15
+        pady = 8 if not big else 14
+        padx = 14 if not big else 20
 
-        btn = tk.Button(
+        return tk.Button(
             parent,
             text=text,
             command=command,
@@ -183,16 +56,25 @@ class DictionaryHome:
             width=width,
             cursor="hand2"
         )
-        return btn
 
-    def create_card(self, parent, bg="#EADCC8"):
-        card = tk.Frame(
-            parent,
-            bg=bg,
-            bd=0,
-            highlightthickness=0
-        )
-        return card
+    def get_language_name(self, code):
+        mapping = {
+            "ja": "日文字典",
+            "en": "英文字典",
+            "zh": "中文字典",
+            "new": "新增字典"
+        }
+        return mapping.get(code, "字典")
+
+    def build_index_page_callback(self):
+        language_name = self.get_language_name(self.selected_language)
+        self.build_index_page(language_name)
+
+    def hide_toolbar(self):
+        try:
+            self.parent.withdraw()
+        except Exception:
+            messagebox.showwarning("提示", "目前無法隱藏工具列")
 
     # =========================================================
     # 首頁
@@ -203,7 +85,7 @@ class DictionaryHome:
         outer = tk.Frame(self.main_frame, bg="#F5EAD9")
         outer.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
 
-        header = self.create_card(outer, bg="#E7D6BE")
+        header = tk.Frame(outer, bg="#E7D6BE", bd=0)
         header.pack(fill=tk.X, pady=(0, 20))
 
         title = tk.Label(
@@ -212,17 +94,17 @@ class DictionaryHome:
             font=("Microsoft JhengHei", 24, "bold"),
             bg="#E7D6BE",
             fg="#4A2F21",
-            pady=20
+            pady=18
         )
         title.pack()
 
         subtitle = tk.Label(
             header,
-            text="請先選擇要開啟的語言字典",
+            text="請先選擇要開啟的字典",
             font=("Microsoft JhengHei", 12),
             bg="#E7D6BE",
             fg="#6A4A35",
-            pady=6
+            pady=4
         )
         subtitle.pack()
 
@@ -231,7 +113,7 @@ class DictionaryHome:
 
         lang_title = tk.Label(
             lang_area,
-            text="語言字典",
+            text="字典入口",
             font=("Microsoft JhengHei", 16, "bold"),
             bg="#F5EAD9",
             fg="#4A2F21",
@@ -245,8 +127,8 @@ class DictionaryHome:
         languages = [
             ("日文字典", "ja", "適合 OCR 日文、讀音、詞性、例句"),
             ("英文字典", "en", "適合單字查詢、片語與基本分類"),
-            ("中文字典", "zh", "適合詞語收藏與整理"),
-            ("韓文字典", "ko", "預留未來擴充使用")
+            ("中文字典", "zh", "適合中文詞語收藏與整理"),
+            ("新增字典", "new", "預留未來建立新的語言字典或分類")
         ]
 
         for i, (title_text, code, desc) in enumerate(languages):
@@ -278,7 +160,7 @@ class DictionaryHome:
                 bg="#E7D6BE",
                 fg="#6A4A35",
                 justify="left",
-                wraplength=320,
+                wraplength=340,
                 pady=10
             )
             card_desc.pack(anchor="w")
@@ -341,10 +223,9 @@ class DictionaryHome:
         center = tk.Frame(outer, bg="#F5EAD9")
         center.pack(fill=tk.BOTH, expand=True)
 
-        # 三大入口
         options = [
-            ("1. 翻譯區", "只顯示原文與翻譯，可做成輕量閱讀區", self.open_translation_area),
-            ("2. 單字收藏", "像一本字典，之後放原文、翻譯、讀音與圖片", self.open_collection_area),
+            ("1. 翻譯區", "只顯示原文與翻譯，可作為輕量閱讀區", self.open_translation_area),
+            ("2. 單字收藏", "像一本字典一樣翻閱收藏內容", self.open_collection_area),
             ("3. 考試區", "之後用來測驗自己，目前先保留架構", self.open_exam_area),
         ]
 
@@ -415,14 +296,22 @@ class DictionaryHome:
         )
         title.pack()
 
-        content = tk.Frame(outer, bg="#F5EAD9")
+        content = tk.PanedWindow(
+            outer,
+            orient=tk.HORIZONTAL,
+            bg="#F5EAD9",
+            sashwidth=10,
+            sashrelief="flat",
+            bd=0,
+            highlightthickness=0
+        )
         content.pack(fill=tk.BOTH, expand=True)
 
         left_panel = tk.Frame(content, bg="#EADCC8", bd=0)
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-
         right_panel = tk.Frame(content, bg="#EADCC8", bd=0)
-        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        content.add(left_panel, minsize=260)
+        content.add(right_panel, minsize=260)
 
         left_title = tk.Label(
             left_panel,
@@ -469,6 +358,8 @@ class DictionaryHome:
             wrap=tk.WORD
         )
         self.translation_result_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+
+        outer.after(120, lambda: content.sash_place(0, 520, 0))
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
@@ -521,7 +412,7 @@ class DictionaryHome:
         # 左側：單字清單
         left_panel = tk.Frame(body, bg="#EADCC8", bd=0)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        left_panel.config(width=260)
+        left_panel.config(width=280)
         left_panel.pack_propagate(False)
 
         left_title = tk.Label(
@@ -581,8 +472,11 @@ class DictionaryHome:
             bd=0
         )
         self.collection_listbox.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
-        page_bar = tk.Frame(left_panel, bg="#EADCC8")
+        self.collection_listbox.bind("<<ListboxSelect>>", self.on_select_collection_word)
+
+        page_bar = tk.Frame(left_panel, bg="#EADCC8", height=40)
         page_bar.pack(fill=tk.X, padx=12, pady=(0, 12))
+        page_bar.pack_propagate(False)
 
         prev_btn = self.create_soft_button(page_bar, "上一頁", self.prev_collection_page, width=8)
         prev_btn.pack(side=tk.LEFT)
@@ -598,7 +492,6 @@ class DictionaryHome:
 
         next_btn = self.create_soft_button(page_bar, "下一頁", self.next_collection_page, width=8)
         next_btn.pack(side=tk.RIGHT)
-        self.collection_listbox.bind("<<ListboxSelect>>", self.on_select_collection_word)
 
         # 右側：書本雙頁
         book_frame = tk.Frame(body, bg="#D8C2A2", bd=0)
@@ -610,7 +503,6 @@ class DictionaryHome:
         right_page = tk.Frame(book_frame, bg="#FBF6EE", bd=0)
         right_page.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 16), pady=16)
 
-        # 左頁：圖片 / 原文
         left_page_title = tk.Label(
             left_page,
             text="左頁",
@@ -654,7 +546,6 @@ class DictionaryHome:
         )
         self.collection_original_text.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 14))
 
-        # 右頁：翻譯 / 讀音 / 建議
         right_page_title = tk.Label(
             right_page,
             text="右頁",
@@ -706,6 +597,7 @@ class DictionaryHome:
             bd=0
         )
         self.collection_reading_entry.pack(fill=tk.X, padx=14, pady=(0, 12), ipady=6)
+
         tag_label = tk.Label(
             right_page,
             text="分類 tag（用逗號分隔）",
@@ -742,10 +634,10 @@ class DictionaryHome:
                 "目前核心欄位：\n"
                 "1. 原文\n"
                 "2. 翻譯\n"
-                "3. 讀音\n\n"
+                "3. 讀音\n"
+                "4. 分類 tag\n\n"
                 "之後可補：\n"
-                "4. 詞性\n"
-                "5. 分類 tag\n"
+                "5. 詞性\n"
                 "6. 例句\n"
                 "7. 圖片"
             ),
@@ -760,11 +652,11 @@ class DictionaryHome:
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X)
 
-        save_btn = self.create_soft_button(bottom, "儲存內容", self.save_collection_entry, width=10)
-        save_btn.pack(side=tk.LEFT)
-
         refresh_btn = self.create_soft_button(bottom, "重新整理", self.refresh_collection_list, width=10)
         refresh_btn.pack(side=tk.LEFT)
+
+        save_btn = self.create_soft_button(bottom, "儲存內容", self.save_collection_entry, width=10)
+        save_btn.pack(side=tk.LEFT, padx=10)
 
         back_btn = self.create_soft_button(bottom, "返回索引", self.build_index_page_callback, width=10)
         back_btn.pack(side=tk.LEFT, padx=10)
@@ -775,7 +667,7 @@ class DictionaryHome:
         self.refresh_collection_list()
 
     # =========================================================
-    # 3. 考試區（先預留）
+    # 3. 考試區（預留）
     # =========================================================
     def open_exam_area(self):
         self.clear_page()
@@ -829,27 +721,8 @@ class DictionaryHome:
         close_btn.pack(side=tk.RIGHT)
 
     # =========================================================
-    # 輔助
+    # 單字收藏資料
     # =========================================================
-    def build_index_page_callback(self):
-        language_name = self.get_language_name(self.selected_language)
-        self.build_index_page(language_name)
-
-    def get_language_name(self, code):
-        mapping = {
-            "ja": "日文字典",
-            "en": "英文字典",
-            "zh": "中文字典",
-            "ko": "韓文字典"
-        }
-        return mapping.get(code, "字典")
-
-    def hide_toolbar(self):
-        try:
-            self.parent.withdraw()
-        except Exception:
-            messagebox.showwarning("提示", "目前無法隱藏工具列")
-    
     def load_dictionary_data(self):
         try:
             data = load_dictionary()
@@ -858,7 +731,6 @@ class DictionaryHome:
                 self.dictionary_data = []
                 return
 
-            # 只保留有單字內容的項目
             cleaned = []
             for item in data:
                 if not isinstance(item, dict):
@@ -868,7 +740,6 @@ class DictionaryHome:
                 if not word:
                     continue
 
-                # 保底，避免舊資料沒這些欄位
                 if "分類" not in item or not isinstance(item.get("分類"), list):
                     item["分類"] = []
 
@@ -897,6 +768,95 @@ class DictionaryHome:
         except Exception as e:
             print("load_dictionary_data error:", e)
             self.dictionary_data = []
+
+    def get_all_tags(self):
+        tags = set()
+
+        for item in self.dictionary_data:
+            item_tags = item.get("分類", [])
+            if isinstance(item_tags, list):
+                for tag in item_tags:
+                    tag_text = str(tag).strip()
+                    if tag_text:
+                        tags.add(tag_text)
+
+        return ["全部"] + sorted(tags)
+
+    def refresh_collection_tag_menu(self):
+        if not hasattr(self, "collection_tag_menu"):
+            return
+
+        menu = self.collection_tag_menu["menu"]
+        menu.delete(0, "end")
+
+        tag_list = self.get_all_tags()
+
+        for tag in tag_list:
+            menu.add_command(
+                label=tag,
+                command=lambda value=tag: self.set_collection_tag(value)
+            )
+
+        if self.collection_tag_var.get() not in tag_list:
+            self.collection_tag_var.set("全部")
+
+    def set_collection_tag(self, value):
+        self.collection_tag_var.set(value)
+        self.collection_page = 1
+        self.refresh_collection_list()
+
+    def apply_collection_filters(self):
+        keyword = self.collection_search_var.get().strip().lower()
+        selected_tag = self.collection_tag_var.get().strip()
+
+        result = []
+
+        for item in self.dictionary_data:
+            word = str(item.get("單字", "")).strip()
+            chinese = str(item.get("中文", "")).strip()
+            reading = str(item.get("讀音", "")).strip()
+            english = str(item.get("英文", "")).strip()
+            tags = item.get("分類", [])
+
+            if not isinstance(tags, list):
+                tags = []
+
+            full_text = f"{word} {chinese} {reading} {english} {' '.join(tags)}".lower()
+
+            if keyword and keyword not in full_text:
+                continue
+
+            if selected_tag != "全部" and selected_tag not in tags:
+                continue
+
+            result.append(item)
+
+        self.filtered_dictionary_data = result
+
+    def get_collection_total_pages(self):
+        if not self.filtered_dictionary_data:
+            return 1
+        return (len(self.filtered_dictionary_data) - 1) // self.collection_page_size + 1
+
+    def get_collection_page_data(self):
+        start = (self.collection_page - 1) * self.collection_page_size
+        end = start + self.collection_page_size
+        return self.filtered_dictionary_data[start:end]
+
+    def on_collection_search_changed(self, event=None):
+        self.collection_page = 1
+        self.refresh_collection_list()
+
+    def prev_collection_page(self):
+        if self.collection_page > 1:
+            self.collection_page -= 1
+            self.refresh_collection_list()
+
+    def next_collection_page(self):
+        total_pages = self.get_collection_total_pages()
+        if self.collection_page < total_pages:
+            self.collection_page += 1
+            self.refresh_collection_list()
 
     def refresh_collection_list(self):
         if not hasattr(self, "collection_listbox"):
@@ -960,16 +920,47 @@ class DictionaryHome:
         self.collection_original_text.delete("1.0", tk.END)
         self.collection_translation_text.delete("1.0", tk.END)
         self.collection_reading_entry.delete(0, tk.END)
-
-        if hasattr(self, "collection_tag_entry"):
-            self.collection_tag_entry.delete(0, tk.END)
+        self.collection_tag_entry.delete(0, tk.END)
 
         self.collection_original_text.insert("1.0", item.get("單字", ""))
         self.collection_translation_text.insert("1.0", item.get("中文", ""))
-
-        reading = item.get("讀音", "")
-        self.collection_reading_entry.insert(0, reading)
+        self.collection_reading_entry.insert(0, item.get("讀音", ""))
 
         tags = item.get("分類", [])
-        if isinstance(tags, list) and hasattr(self, "collection_tag_entry"):
+        if isinstance(tags, list):
             self.collection_tag_entry.insert(0, ", ".join(tags))
+
+    def save_collection_entry(self):
+        if self.current_entry is None:
+            messagebox.showwarning("提示", "請先從左邊選一個單字")
+            return
+
+        original = self.collection_original_text.get("1.0", tk.END).strip()
+        translation = self.collection_translation_text.get("1.0", tk.END).strip()
+        reading = self.collection_reading_entry.get().strip()
+        tag_raw = self.collection_tag_entry.get().strip()
+
+        tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
+
+        data = load_dictionary()
+
+        target_index = None
+        for i, item in enumerate(data):
+            if item.get("單字", "") == self.current_entry.get("單字", ""):
+                target_index = i
+                break
+
+        if target_index is None:
+            messagebox.showerror("錯誤", "找不到要儲存的單字")
+            return
+
+        data[target_index]["單字"] = original
+        data[target_index]["中文"] = translation
+        data[target_index]["讀音"] = reading
+        data[target_index]["分類"] = tags
+
+        save_dictionary(data)
+
+        self.current_entry = data[target_index]
+        self.refresh_collection_list()
+        messagebox.showinfo("成功", "已儲存單字內容")
