@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 from translator import translate
 from dictionary_manager import add_word
@@ -117,21 +117,13 @@ class ResultPopup:
         )
         self.close_button.pack(side=tk.RIGHT, padx=8, pady=8)
 
-        # 中間內容區：可拖拉分隔線
-        self.content_paned = tk.PanedWindow(
-            self.main_frame,
-            orient=tk.HORIZONTAL,
-            bg="#F5EAD9",
-            sashwidth=12,
-            sashrelief="flat",
-            bd=0,
-            highlightthickness=0
-        )
+        # 中間內容區：改用 ttk.Panedwindow
+        self.content_paned = ttk.Panedwindow(self.main_frame, orient=tk.HORIZONTAL)
         self.content_paned.pack(fill=tk.BOTH, expand=True)
 
         # 左邊原文區
         self.left_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
-        self.content_paned.add(self.left_panel, minsize=260)
+        self.content_paned.add(self.left_panel, weight=3)
 
         self.source_title = tk.Label(
             self.left_panel,
@@ -160,7 +152,7 @@ class ResultPopup:
 
         # 右邊翻譯區
         self.right_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
-        self.content_paned.add(self.right_panel, minsize=260)
+        self.content_paned.add(self.right_panel, weight=2)
 
         self.translated_title = tk.Label(
             self.right_panel,
@@ -199,9 +191,6 @@ class ResultPopup:
             pady=8
         )
         self.status_label.pack(fill=tk.X, pady=(10, 0))
-
-        # 預設讓翻譯區不要太窄
-        self.window.after(120, lambda: self.content_paned.sash_place(0, 520, 0))
 
     def update_content(self, new_source_text):
         self.source_text = new_source_text.strip()
