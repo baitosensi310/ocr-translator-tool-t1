@@ -105,12 +105,11 @@ class ToolbarWindow:
                     self.result_popup.window.lift()
                     self.result_popup.window.focus_force()
                     return
-            except:
+            except Exception:
                 self.result_popup = None
-            self.result_popup = None
 
-    self.result_popup = ResultPopup(self.root, source_text)
-    self.result_popup.show()
+        self.result_popup = ResultPopup(self.root, source_text)
+        self.result_popup.show()
 
     def monitor_clipboard(self):
         try:
