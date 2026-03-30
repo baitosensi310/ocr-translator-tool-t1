@@ -46,19 +46,22 @@ class DictionaryHome:
         result = []
 
         for item in self.dictionary_data:
-            word = str(item.get("單字", ""))
-            chinese = str(item.get("中文", ""))
-            reading = str(item.get("讀音", ""))
+            word = str(item.get("單字", "")).strip()
+            chinese = str(item.get("中文", "")).strip()
+            reading = str(item.get("讀音", "")).strip()
+            english = str(item.get("英文", "")).strip()
             tags = item.get("分類", [])
 
             if not isinstance(tags, list):
                 tags = []
 
-            full_text = f"{word} {chinese} {reading} {' '.join(tags)}".lower()
+            full_text = f"{word} {chinese} {reading} {english} {' '.join(tags)}".lower()
 
+            # 關鍵字篩選
             if keyword and keyword not in full_text:
                 continue
 
+            # tag 篩選
             if selected_tag != "全部" and selected_tag not in tags:
                 continue
 
@@ -113,6 +116,44 @@ class DictionaryHome:
         if self.collection_page < total_pages:
             self.collection_page += 1
             self.refresh_collection_list()
+
+    def save_collection_entry(self):
+        if self.current_entry is None:
+            messagebox.showwarning("提示", "請先從左邊選一個單字")
+            return
+
+        original = self.collection_original_text.get("1.0", tk.END).strip()
+        translation = self.collection_translation_text.get("1.0", tk.END).strip()
+        reading = self.collection_reading_entry.get().strip()
+
+        tag_raw = ""
+        if hasattr(self, "collection_tag_entry"):
+            tag_raw = self.collection_tag_entry.get().strip()
+
+        tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
+
+        data = load_dictionary()
+
+        target_index = None
+        for i, item in enumerate(data):
+            if item.get("單字", "") == self.current_entry.get("單字", ""):
+                target_index = i
+                break
+
+        if target_index is None:
+            messagebox.showerror("錯誤", "找不到要儲存的單字")
+            return
+
+        data[target_index]["單字"] = original
+        data[target_index]["中文"] = translation
+        data[target_index]["讀音"] = reading
+        data[target_index]["分類"] = tags
+
+        save_dictionary(data)
+
+        self.current_entry = data[target_index]
+        self.refresh_collection_list()
+        messagebox.showinfo("成功", "已儲存單字內容")
 
     # =========================================================
     # 共用樣式
@@ -665,6 +706,25 @@ class DictionaryHome:
             bd=0
         )
         self.collection_reading_entry.pack(fill=tk.X, padx=14, pady=(0, 12), ipady=6)
+        tag_label = tk.Label(
+            right_page,
+            text="分類 tag（用逗號分隔）",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        tag_label.pack(fill=tk.X, padx=14, pady=(6, 4))
+
+        self.collection_tag_entry = tk.Entry(
+            right_page,
+            font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0
+        )
+        self.collection_tag_entry.pack(fill=tk.X, padx=14, pady=(0, 12), ipady=6)
 
         suggestion_title = tk.Label(
             right_page,
@@ -699,6 +759,9 @@ class DictionaryHome:
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X)
+
+        save_btn = self.create_soft_button(bottom, "儲存內容", self.save_collection_entry, width=10)
+        save_btn.pack(side=tk.LEFT)
 
         refresh_btn = self.create_soft_button(bottom, "重新整理", self.refresh_collection_list, width=10)
         refresh_btn.pack(side=tk.LEFT)
@@ -790,11 +853,49 @@ class DictionaryHome:
     def load_dictionary_data(self):
         try:
             data = load_dictionary()
-            if isinstance(data, list):
-                self.dictionary_data = data
-            else:
+
+            if not isinstance(data, list):
                 self.dictionary_data = []
-        except Exception:
+                return
+
+            # 只保留有單字內容的項目
+            cleaned = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+
+                word = str(item.get("單字", "")).strip()
+                if not word:
+                    continue
+
+                # 保底，避免舊資料沒這些欄位
+                if "分類" not in item or not isinstance(item.get("分類"), list):
+                    item["分類"] = []
+
+                if "讀音" not in item:
+                    item["讀音"] = ""
+
+                if "中文" not in item:
+                    item["中文"] = ""
+
+                if "英文" not in item:
+                    item["英文"] = ""
+
+                if "詞性" not in item:
+                    item["詞性"] = ""
+
+                if "例句" not in item or not isinstance(item.get("例句"), list):
+                    item["例句"] = []
+
+                if "用法" not in item:
+                    item["用法"] = ""
+
+                cleaned.append(item)
+
+            self.dictionary_data = cleaned
+
+        except Exception as e:
+            print("load_dictionary_data error:", e)
             self.dictionary_data = []
 
     def refresh_collection_list(self):
@@ -816,9 +917,12 @@ class DictionaryHome:
         for item in page_data:
             word = str(item.get("單字", "")).strip()
             reading = str(item.get("讀音", "")).strip()
+            chinese = str(item.get("中文", "")).strip()
 
             if reading:
                 display_text = f"{word} ({reading})"
+            elif chinese:
+                display_text = f"{word} - {chinese}"
             else:
                 display_text = word
 
@@ -828,6 +932,9 @@ class DictionaryHome:
             self.collection_page_label.config(
                 text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
             )
+
+        print("dictionary_data =", len(self.dictionary_data))
+        print("filtered_dictionary_data =", len(self.filtered_dictionary_data))
 
     def on_select_collection_word(self, event=None):
         if not hasattr(self, "collection_listbox"):
@@ -854,8 +961,15 @@ class DictionaryHome:
         self.collection_translation_text.delete("1.0", tk.END)
         self.collection_reading_entry.delete(0, tk.END)
 
+        if hasattr(self, "collection_tag_entry"):
+            self.collection_tag_entry.delete(0, tk.END)
+
         self.collection_original_text.insert("1.0", item.get("單字", ""))
         self.collection_translation_text.insert("1.0", item.get("中文", ""))
 
         reading = item.get("讀音", "")
         self.collection_reading_entry.insert(0, reading)
+
+        tags = item.get("分類", [])
+        if isinstance(tags, list) and hasattr(self, "collection_tag_entry"):
+            self.collection_tag_entry.insert(0, ", ".join(tags))
