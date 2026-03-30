@@ -2,7 +2,12 @@ from deep_translator import GoogleTranslator
 from openai import OpenAI
 
 # ⚠️ 這裡換成你的 OpenAI API Key
-client = OpenAI(api_key="你的APIKEY") #key argument
+import os
+from deep_translator import GoogleTranslator
+from openai import OpenAI
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 def translate_local(text):
@@ -19,6 +24,9 @@ def translate_local(text):
 
 def translate_gpt(text):
     text = text.strip()
+
+    if client is None:
+        return "GPT翻譯失敗：尚未設定 OPENAI_API_KEY"
 
     if not text:
         return "沒有可翻譯的文字"

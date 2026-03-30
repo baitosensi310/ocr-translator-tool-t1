@@ -4,7 +4,7 @@ import os
 FILE_PATH = "dictionary.json"
 
 
-def create_empty_entry(word):
+def create_empty_entry(word: str) -> dict:
     return {
         "單字": word,
         "讀音": "",
@@ -17,8 +17,8 @@ def create_empty_entry(word):
     }
 
 
-def normalize_entry(item):
-    # 已經是新格式
+def normalize_entry(item: dict) -> dict:
+    # 新格式
     if "單字" in item:
         return {
             "單字": str(item.get("單字", "")).strip(),
@@ -48,7 +48,7 @@ def normalize_entry(item):
     }
 
 
-def load_dictionary():
+def load_dictionary() -> list:
     if not os.path.exists(FILE_PATH):
         return []
 
@@ -79,12 +79,12 @@ def load_dictionary():
     return new_data
 
 
-def save_dictionary(data):
+def save_dictionary(data: list) -> None:
     with open(FILE_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def add_word(word):
+def add_word(word: str) -> str:
     word = word.strip()
 
     if not word:
@@ -96,39 +96,34 @@ def add_word(word):
         if item["單字"] == word:
             return "已存在"
 
-    new_entry = create_empty_entry(word)
-    data.append(new_entry)
+    data.append(create_empty_entry(word))
     save_dictionary(data)
-
     return "已加入字典"
 
 
-def update_word(word, reading=None, chinese=None, english=None, part_of_speech=None,
-                categories=None, examples=None, usage=None):
+def update_word(
+    old_word: str,
+    new_word: str,
+    reading: str,
+    chinese: str,
+    english: str,
+    part_of_speech: str,
+    categories: list,
+    examples: list,
+    usage: str
+) -> str:
     data = load_dictionary()
 
     for item in data:
-        if item["單字"] == word:
-            if reading is not None:
-                item["讀音"] = str(reading).strip()
-
-            if chinese is not None:
-                item["中文"] = str(chinese).strip()
-
-            if english is not None:
-                item["英文"] = str(english).strip()
-
-            if part_of_speech is not None:
-                item["詞性"] = str(part_of_speech).strip()
-
-            if categories is not None:
-                item["分類"] = categories if isinstance(categories, list) else []
-
-            if examples is not None:
-                item["例句"] = examples if isinstance(examples, list) else []
-
-            if usage is not None:
-                item["用法"] = str(usage).strip()
+        if item["單字"] == old_word:
+            item["單字"] = new_word.strip()
+            item["讀音"] = reading.strip()
+            item["中文"] = chinese.strip()
+            item["英文"] = english.strip()
+            item["詞性"] = part_of_speech.strip()
+            item["分類"] = categories if isinstance(categories, list) else []
+            item["例句"] = examples if isinstance(examples, list) else []
+            item["用法"] = usage.strip()
 
             save_dictionary(data)
             return "已更新"
@@ -136,23 +131,9 @@ def update_word(word, reading=None, chinese=None, english=None, part_of_speech=N
     return "找不到單字"
 
 
-def get_word(word):
+def delete_word(word: str) -> str:
     data = load_dictionary()
-
-    for item in data:
-        if item["單字"] == word:
-            return item
-
-    return None
-
-
-def delete_word(word):
-    data = load_dictionary()
-    new_data = []
-
-    for item in data:
-        if item["單字"] != word:
-            new_data.append(item)
+    new_data = [item for item in data if item.get("單字", "") != word]
 
     if len(new_data) == len(data):
         return "找不到單字"
