@@ -25,6 +25,7 @@ class ToolbarWindow:
 
         self.ocr_engine = OCREngine()
         self.dictionary_home = None
+        self.result_popup = None
 
         try:
             self.last_clipboard_text = pyperclip.paste()
@@ -97,8 +98,19 @@ class ToolbarWindow:
             print("OCR失敗：", e)
 
     def open_result_popup(self, source_text):
-        popup = ResultPopup(self.root, source_text)
-        popup.show()
+        if self.result_popup is not None:
+            try:
+                if self.result_popup.window.winfo_exists():
+                    self.result_popup.update_content(source_text)
+                    self.result_popup.window.lift()
+                    self.result_popup.window.focus_force()
+                    return
+            except:
+                self.result_popup = None
+            self.result_popup = None
+
+    self.result_popup = ResultPopup(self.root, source_text)
+    self.result_popup.show()
 
     def monitor_clipboard(self):
         try:

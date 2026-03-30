@@ -21,6 +21,16 @@ class ResultPopup:
         self.build_ui()
         self.fill_source_text()
         self.do_translate()
+        
+    def update_content(self, new_source_text):
+        self.source_text = new_source_text.strip()
+        self.translated_text = ""
+
+        self.source_textbox.delete("1.0", tk.END)
+        self.translated_textbox.delete("1.0", tk.END)
+
+        self.source_textbox.insert("1.0", self.source_text)
+        self.do_translate()
 
     # =========================================================
     # UI

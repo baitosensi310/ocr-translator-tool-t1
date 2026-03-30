@@ -7,7 +7,13 @@ class DictionaryHome:
         self.parent = parent
         self.selected_language = None
         self.dictionary_data = []
+        self.filtered_dictionary_data = []
         self.current_entry = None
+
+        self.collection_search_var = tk.StringVar()
+        self.collection_tag_var = tk.StringVar(value="全部")
+        self.collection_page = 1
+        self.collection_page_size = 12
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("字典主頁")
@@ -19,6 +25,94 @@ class DictionaryHome:
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
         self.build_home_page()
+
+        def get_all_tags(self):
+            tags = set()
+
+        for item in self.dictionary_data:
+            item_tags = item.get("分類", [])
+            if isinstance(item_tags, list):
+                for tag in item_tags:
+                    tag_text = str(tag).strip()
+                    if tag_text:
+                        tags.add(tag_text)
+
+        return ["全部"] + sorted(tags)
+
+    def apply_collection_filters(self):
+        keyword = self.collection_search_var.get().strip().lower()
+        selected_tag = self.collection_tag_var.get().strip()
+
+        result = []
+
+        for item in self.dictionary_data:
+            word = str(item.get("單字", ""))
+            chinese = str(item.get("中文", ""))
+            reading = str(item.get("讀音", ""))
+            tags = item.get("分類", [])
+
+            if not isinstance(tags, list):
+                tags = []
+
+            full_text = f"{word} {chinese} {reading} {' '.join(tags)}".lower()
+
+            if keyword and keyword not in full_text:
+                continue
+
+            if selected_tag != "全部" and selected_tag not in tags:
+                continue
+
+            result.append(item)
+
+        self.filtered_dictionary_data = result
+
+    def get_collection_total_pages(self):
+        if not self.filtered_dictionary_data:
+            return 1
+        return (len(self.filtered_dictionary_data) - 1) // self.collection_page_size + 1
+
+    def get_collection_page_data(self):
+        start = (self.collection_page - 1) * self.collection_page_size
+        end = start + self.collection_page_size
+        return self.filtered_dictionary_data[start:end]
+
+    def refresh_collection_tag_menu(self):
+        if not hasattr(self, "collection_tag_menu"):
+            return
+
+        menu = self.collection_tag_menu["menu"]
+        menu.delete(0, "end")
+
+        tag_list = self.get_all_tags()
+
+        for tag in tag_list:
+            menu.add_command(
+                label=tag,
+                command=lambda value=tag: self.set_collection_tag(value)
+            )
+
+        if self.collection_tag_var.get() not in tag_list:
+            self.collection_tag_var.set("全部")
+
+    def set_collection_tag(self, value):
+        self.collection_tag_var.set(value)
+        self.collection_page = 1
+        self.refresh_collection_list()
+
+    def on_collection_search_changed(self, event=None):
+        self.collection_page = 1
+        self.refresh_collection_list()
+
+    def prev_collection_page(self):
+        if self.collection_page > 1:
+            self.collection_page -= 1
+            self.refresh_collection_list()
+
+    def next_collection_page(self):
+        total_pages = self.get_collection_total_pages()
+        if self.collection_page < total_pages:
+            self.collection_page += 1
+            self.refresh_collection_list()
 
     # =========================================================
     # 共用樣式
@@ -399,6 +493,42 @@ class DictionaryHome:
         )
         left_title.pack(fill=tk.X)
 
+        search_frame = tk.Frame(left_panel, bg="#EADCC8")
+        search_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
+
+        search_entry = tk.Entry(
+            search_frame,
+            textvariable=self.collection_search_var,
+            font=("Microsoft JhengHei", 11),
+            bg="#FBF6EE",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0
+        )
+        search_entry.pack(fill=tk.X, ipady=6)
+        search_entry.bind("<KeyRelease>", self.on_collection_search_changed)
+
+        tag_frame = tk.Frame(left_panel, bg="#EADCC8")
+        tag_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
+
+        self.collection_tag_menu = tk.OptionMenu(tag_frame, self.collection_tag_var, "全部")
+        self.collection_tag_menu.config(
+            font=("Microsoft JhengHei", 10),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            highlightthickness=0
+        )
+        self.collection_tag_menu["menu"].config(
+            font=("Microsoft JhengHei", 10),
+            bg="#FBF6EE",
+            fg="#3A2A1F"
+        )
+        self.collection_tag_menu.pack(fill=tk.X)
+
         self.collection_listbox = tk.Listbox(
             left_panel,
             font=("Microsoft JhengHei", 12),
@@ -410,6 +540,23 @@ class DictionaryHome:
             bd=0
         )
         self.collection_listbox.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        page_bar = tk.Frame(left_panel, bg="#EADCC8")
+        page_bar.pack(fill=tk.X, padx=12, pady=(0, 12))
+
+        prev_btn = self.create_soft_button(page_bar, "上一頁", self.prev_collection_page, width=8)
+        prev_btn.pack(side=tk.LEFT)
+
+        self.collection_page_label = tk.Label(
+            page_bar,
+            text="第 1 頁 / 共 1 頁",
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#6A4A35"
+        )
+        self.collection_page_label.pack(side=tk.LEFT, padx=10)
+
+        next_btn = self.create_soft_button(page_bar, "下一頁", self.next_collection_page, width=8)
+        next_btn.pack(side=tk.RIGHT)
         self.collection_listbox.bind("<<ListboxSelect>>", self.on_select_collection_word)
 
         # 右側：書本雙頁
@@ -655,9 +802,18 @@ class DictionaryHome:
             return
 
         self.load_dictionary_data()
+        self.refresh_collection_tag_menu()
+        self.apply_collection_filters()
+
+        total_pages = self.get_collection_total_pages()
+        if self.collection_page > total_pages:
+            self.collection_page = total_pages
+
         self.collection_listbox.delete(0, tk.END)
 
-        for item in self.dictionary_data:
+        page_data = self.get_collection_page_data()
+
+        for item in page_data:
             word = str(item.get("單字", "")).strip()
             reading = str(item.get("讀音", "")).strip()
 
@@ -668,6 +824,11 @@ class DictionaryHome:
 
             self.collection_listbox.insert(tk.END, display_text)
 
+        if hasattr(self, "collection_page_label"):
+            self.collection_page_label.config(
+                text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
+            )
+
     def on_select_collection_word(self, event=None):
         if not hasattr(self, "collection_listbox"):
             return
@@ -676,11 +837,13 @@ class DictionaryHome:
         if not selection:
             return
 
-        index = selection[0]
-        if index < 0 or index >= len(self.dictionary_data):
+        index_on_page = selection[0]
+        absolute_index = (self.collection_page - 1) * self.collection_page_size + index_on_page
+
+        if absolute_index < 0 or absolute_index >= len(self.filtered_dictionary_data):
             return
 
-        self.current_entry = self.dictionary_data[index]
+        self.current_entry = self.filtered_dictionary_data[absolute_index]
         self.show_collection_detail(self.current_entry)
 
     def show_collection_detail(self, item):
