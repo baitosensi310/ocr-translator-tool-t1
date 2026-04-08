@@ -239,10 +239,11 @@ def add_word(word, source_text="", forced_language=None):
     else:
         word_language = detect_language(word)
 
+        # 純漢字預設先當日文
         if word_language == "cjk":
-            return "NEED_LANGUAGE_CHOICE"
-
-        language = word_language
+            language = "ja"
+        else:
+            language = word_language
 
     new_entry = create_empty_entry(word, language=language)
 
@@ -322,9 +323,12 @@ def add_word_fast(word, forced_language=None):
         language = forced_language
     else:
         detected = detect_language(word)
+
+        # 純漢字預設先當日文
         if detected == "cjk":
-            return "NEED_LANGUAGE_CHOICE"
-        language = detected
+            language = "ja"
+        else:
+            language = detected
 
     new_entry = create_empty_entry(word, language=language)
 

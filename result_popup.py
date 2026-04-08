@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 import threading
 
 from translator import translate
-from dictionary_manager import add_word
+from dictionary_manager import add_word, add_word_fast
 
 
 class ResultPopup:
@@ -255,12 +255,7 @@ class ResultPopup:
                 )
                 return
 
-            result = add_word_fast(selected_text, forced_language=language)
-
-            if result == "NEED_LANGUAGE_CHOICE":
-                self.ask_dictionary_language(selected_text)
-                return
-
+            result = add_word_fast(selected_text)
             messagebox.showinfo("字典", result, parent=self.window)
             self.set_status(f"字典：{result}")
 
