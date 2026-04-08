@@ -202,25 +202,20 @@ def find_jmdict_info(word):
             return None
 
         english_text = normalize_text(info.get("英文", ""))
+        reading_text = normalize_text(info.get("讀音", ""))
+        pos_text = normalize_text(info.get("詞性", ""))
+
         chinese_text = ""
 
-        # 先用英文 gloss 補中文
-        if english_text:
-            chinese_text = translate_to_chinese(english_text)
-
-        # 如果沒補到，再直接翻單字
-        if not chinese_text:
-            chinese_text = translate_to_chinese(word)
-
         return {
-            "讀音": normalize_text(info.get("讀音", "")),
+            "讀音": reading_text,
             "英文": english_text,
             "中文": chinese_text,
-            "詞性": normalize_text(info.get("詞性", ""))
+            "詞性": pos_text
         }
     except Exception as e:
         print("find_jmdict_info 失敗：", e)
-        return None
+        return Nonee
 
 
 def add_word(word, source_text=""):
@@ -267,8 +262,8 @@ def add_word(word, source_text=""):
             new_entry["中文"] = info.get("中文", "")
             new_entry["詞性"] = info.get("詞性", "")
 
-        if not new_entry["中文"]:
-            new_entry["中文"] = translate_to_chinese(word)
+#if not new_entry["中文"]:
+#  new_entry["中文"] = translate_to_chinese(word) 先不用
 
     # 英文
     elif language == "en":
@@ -294,3 +289,26 @@ def add_word(word, source_text=""):
     save_dictionary(data)
 
     return f"已加入字典（語言：{language}）"
+
+def delete_word(word):
+    word = normalize_text(word)
+
+    if not word:
+        return "找不到單字"
+
+    data = load_dictionary()
+    new_data = []
+
+    removed = False
+
+    for item in data:
+        if not removed and item.get("單字", "") == word:
+            removed = True
+            continue
+        new_data.append(item)
+
+    if not removed:
+        return "找不到單字"
+
+    save_dictionary(new_data)
+    return "已刪除單字"

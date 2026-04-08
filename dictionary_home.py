@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from dictionary_manager import load_dictionary, save_dictionary
+from dictionary_manager import load_dictionary, save_dictionary, delete_word
 
 
 class DictionaryHome:
@@ -583,6 +583,9 @@ class DictionaryHome:
         self.refresh_collection_list()
         self.show_empty_collection_detail()
 
+        delete_btn = self.create_soft_button(bottom, "刪除單字", self.delete_current_word, width=10)
+        delete_btn.pack(side=tk.LEFT, padx=10)
+
     def create_labeled_entry(self, parent, label_text):
         label = tk.Label(
             parent,
@@ -965,3 +968,27 @@ class DictionaryHome:
         self.current_entry = None
         self.refresh_collection_list()
         self.show_empty_collection_detail()
+    
+    def delete_current_word(self):
+        if self.current_entry is None:
+            messagebox.showwarning("提示", "請先從左邊選一個單字")
+            return
+
+        word = self.current_entry.get("單字", "").strip()
+        if not word:
+            messagebox.showwarning("提示", "目前沒有可刪除的單字")
+            return
+
+        confirm = messagebox.askyesno("確認刪除", f"確定要刪除「{word}」嗎？")
+        if not confirm:
+            return
+
+        result = delete_word(word)
+
+        if result == "已刪除單字":
+            self.current_entry = None
+            self.refresh_collection_list()
+            self.show_empty_collection_detail()
+            messagebox.showinfo("成功", result)
+        else:
+            messagebox.showerror("錯誤", result)
