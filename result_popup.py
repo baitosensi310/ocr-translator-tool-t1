@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+import threading
 
 from translator import translate
 from dictionary_manager import add_word
@@ -10,6 +11,7 @@ class ResultPopup:
         self.parent = parent
         self.source_text = source_text.strip()
         self.translated_text = ""
+        self.translate_job_id = 0
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("翻譯結果")
@@ -25,7 +27,6 @@ class ResultPopup:
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
-        # 上方按鈕列
         self.top_bar = tk.Frame(self.main_frame, bg="#E7D6BE")
         self.top_bar.pack(fill=tk.X, pady=(0, 10))
 
@@ -117,11 +118,9 @@ class ResultPopup:
         )
         self.close_button.pack(side=tk.RIGHT, padx=8, pady=8)
 
-        # 中間內容區：改用 ttk.Panedwindow
         self.content_paned = ttk.Panedwindow(self.main_frame, orient=tk.HORIZONTAL)
         self.content_paned.pack(fill=tk.BOTH, expand=True)
 
-        # 左邊原文區
         self.left_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
         self.content_paned.add(self.left_panel, weight=3)
 
@@ -150,7 +149,6 @@ class ResultPopup:
         )
         self.source_textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # 右邊翻譯區
         self.right_panel = tk.Frame(self.content_paned, bg="#E7D6BE", bd=0)
         self.content_paned.add(self.right_panel, weight=2)
 
@@ -179,7 +177,6 @@ class ResultPopup:
         )
         self.translated_textbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # 狀態列
         self.status_label = tk.Label(
             self.main_frame,
             text="狀態：準備完成",
@@ -206,25 +203,42 @@ class ResultPopup:
             self.set_status("沒有可翻譯文字")
             return
 
-        self.do_translate()
+        self.translated_textbox.insert("1.0", "翻譯中，請稍候...")
+        self.start_translate_async()
 
-    def do_translate(self):
+    def start_translate_async(self):
+        self.translate_job_id += 1
+        current_job_id = self.translate_job_id
+
         self.set_status("正在翻譯...")
-        self.window.update_idletasks()
 
+        thread = threading.Thread(
+            target=self._translate_worker,
+            args=(self.source_text, current_job_id),
+            daemon=True
+        )
+        thread.start()
+
+    def _translate_worker(self, text, job_id):
         try:
-            result = translate(self.source_text, "local")
-            self.translated_text = result if result else "翻譯結果為空"
-
-            self.translated_textbox.delete("1.0", tk.END)
-            self.translated_textbox.insert("1.0", self.translated_text)
-
-            self.set_status("翻譯完成")
+            result = translate(text, "local")
         except Exception as e:
-            self.translated_text = f"翻譯失敗：{e}"
-            self.translated_textbox.delete("1.0", tk.END)
-            self.translated_textbox.insert("1.0", self.translated_text)
-            self.set_status("翻譯失敗")
+            result = f"翻譯失敗：{e}"
+
+        self.window.after(0, lambda: self._apply_translation_result(job_id, result))
+
+    def _apply_translation_result(self, job_id, result):
+        if not self.window.winfo_exists():
+            return
+
+        if job_id != self.translate_job_id:
+            return
+
+        self.translated_text = result if result else "翻譯結果為空"
+
+        self.translated_textbox.delete("1.0", tk.END)
+        self.translated_textbox.insert("1.0", self.translated_text)
+        self.set_status("翻譯完成")
 
     def add_current_to_dict(self):
         try:

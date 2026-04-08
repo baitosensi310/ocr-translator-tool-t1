@@ -26,6 +26,7 @@ class ToolbarWindow:
         self.ocr_engine = OCREngine()
         self.dictionary_home = None
         self.result_popup = None
+        self.clipboard_monitor_enabled = True
 
         try:
             self.last_clipboard_text = pyperclip.paste()
@@ -42,6 +43,14 @@ class ToolbarWindow:
 
         self.create_button(container, "OCR", self.run_ocr).pack(side=tk.LEFT, padx=4)
         self.create_button(container, "字典", self.open_dictionary).pack(side=tk.LEFT, padx=4)
+
+        self.clipboard_toggle_button = self.create_button(
+            container,
+            "剪貼簿監聽：開",
+            self.toggle_clipboard_monitor
+        )
+        self.clipboard_toggle_button.pack(side=tk.LEFT, padx=4)
+
         self.create_button(container, "設定", self.open_settings).pack(side=tk.LEFT, padx=4)
 
         spacer = tk.Frame(container, bg="#3A2A1F")
@@ -113,11 +122,12 @@ class ToolbarWindow:
 
     def monitor_clipboard(self):
         try:
-            text = pyperclip.paste()
+            if self.clipboard_monitor_enabled:
+                text = pyperclip.paste()
 
-            if text.strip() and text != self.last_clipboard_text:
-                self.last_clipboard_text = text
-                self.open_result_popup(text)
+                if text.strip() and text != self.last_clipboard_text:
+                    self.last_clipboard_text = text
+                    self.open_result_popup(text)
         except Exception:
             pass
 
@@ -140,3 +150,13 @@ class ToolbarWindow:
 
     def show(self):
         self.root.mainloop()
+
+    def toggle_clipboard_monitor(self):
+        self.clipboard_monitor_enabled = not self.clipboard_monitor_enabled
+
+        if self.clipboard_monitor_enabled:
+            self.clipboard_toggle_button.config(text="剪貼簿監聽：開")
+            print("剪貼簿監聽已開啟")
+        else:
+            self.clipboard_toggle_button.config(text="剪貼簿監聽：關")
+            print("剪貼簿監聽已關閉")
