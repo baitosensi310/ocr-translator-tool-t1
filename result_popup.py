@@ -228,9 +228,23 @@ class ResultPopup:
 
     def add_current_to_dict(self):
         try:
-            result = add_word(self.source_text)
+            try:
+                selected_text = self.source_textbox.selection_get().strip()
+            except Exception:
+                selected_text = ""
+
+            if not selected_text:
+                messagebox.showwarning(
+                    "提示",
+                    "請先在原文區反白你要加入的單字，再按加入字典",
+                    parent=self.window
+                )
+                return
+
+            result = add_word(selected_text)
             messagebox.showinfo("字典", result, parent=self.window)
             self.set_status(f"字典：{result}")
+
         except Exception as e:
             messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
             self.set_status("加入字典失敗")

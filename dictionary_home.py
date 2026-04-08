@@ -412,7 +412,7 @@ class DictionaryHome:
         # 左側：單字清單
         left_panel = tk.Frame(body, bg="#EADCC8", bd=0)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        left_panel.config(width=280)
+        left_panel.config(width=240)
         left_panel.pack_propagate(False)
 
         left_title = tk.Label(
@@ -474,12 +474,17 @@ class DictionaryHome:
         self.collection_listbox.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
         self.collection_listbox.bind("<<ListboxSelect>>", self.on_select_collection_word)
 
-        page_bar = tk.Frame(left_panel, bg="#EADCC8", height=40)
+        page_bar = tk.Frame(left_panel, bg="#EADCC8")
         page_bar.pack(fill=tk.X, padx=12, pady=(0, 12))
-        page_bar.pack_propagate(False)
 
-        prev_btn = self.create_soft_button(page_bar, "上一頁", self.prev_collection_page, width=8)
+        button_row = tk.Frame(page_bar, bg="#EADCC8")
+        button_row.pack(fill=tk.X)
+
+        prev_btn = self.create_soft_button(button_row, "上一頁", self.prev_collection_page, width=8)
         prev_btn.pack(side=tk.LEFT)
+
+        next_btn = self.create_soft_button(button_row, "下一頁", self.next_collection_page, width=8)
+        next_btn.pack(side=tk.RIGHT)
 
         self.collection_page_label = tk.Label(
             page_bar,
@@ -488,9 +493,16 @@ class DictionaryHome:
             bg="#EADCC8",
             fg="#6A4A35"
         )
-        self.collection_page_label.pack(side=tk.LEFT, padx=10)
+        self.collection_page_label.pack(pady=(6, 0))
 
-        next_btn = self.create_soft_button(page_bar, "下一頁", self.next_collection_page, width=8)
+        self.collection_page_label = tk.Label(
+            page_bar,
+            text="第 1 頁 / 共 1 頁",
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#6A4A35"
+        )
+        self.collection_page_label.place(relx=0.5, rely=0.5, anchor="center")
         next_btn.pack(side=tk.RIGHT)
 
         # 右側：書本雙頁
@@ -498,10 +510,14 @@ class DictionaryHome:
         book_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         left_page = tk.Frame(book_frame, bg="#FBF6EE", bd=0)
+        left_page = tk.Frame(book_frame, bg="#FBF6EE", bd=0, width=700)
         left_page.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(16, 8), pady=16)
+        left_page.pack_propagate(False)
 
         right_page = tk.Frame(book_frame, bg="#FBF6EE", bd=0)
-        right_page.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 16), pady=16)
+        right_page = tk.Frame(book_frame, bg="#FBF6EE", bd=0, width=420)
+        right_page.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(8, 16), pady=16)
+        right_page.pack_propagate(False)
 
         left_page_title = tk.Label(
             left_page,
@@ -558,7 +574,7 @@ class DictionaryHome:
 
         translation_label = tk.Label(
             right_page,
-            text="翻譯",
+            text="中文",
             font=("Microsoft JhengHei", 12, "bold"),
             bg="#FBF6EE",
             fg="#4A2F21",
@@ -568,7 +584,7 @@ class DictionaryHome:
 
         self.collection_translation_text = tk.Text(
             right_page,
-            height=6,
+            height=4,
             font=("Microsoft JhengHei", 11),
             bg="#F8F1E7",
             fg="#3A2A1F",
@@ -577,6 +593,28 @@ class DictionaryHome:
             wrap=tk.WORD
         )
         self.collection_translation_text.pack(fill=tk.X, padx=14, pady=(0, 10))
+
+        english_label = tk.Label(
+            right_page,
+            text="英文",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        english_label.pack(fill=tk.X, padx=14, pady=(6, 4))
+
+        self.collection_english_text = tk.Text(
+            right_page,
+            height=3,
+            font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            wrap=tk.WORD
+        )
+        self.collection_english_text.pack(fill=tk.X, padx=14, pady=(0, 10))
 
         reading_label = tk.Label(
             right_page,
@@ -596,7 +634,27 @@ class DictionaryHome:
             relief="flat",
             bd=0
         )
-        self.collection_reading_entry.pack(fill=tk.X, padx=14, pady=(0, 12), ipady=6)
+        self.collection_reading_entry.pack(fill=tk.X, padx=14, pady=(0, 10), ipady=6)
+
+        pos_label = tk.Label(
+            right_page,
+            text="詞性",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        pos_label.pack(fill=tk.X, padx=14, pady=(6, 4))
+
+        self.collection_pos_entry = tk.Entry(
+            right_page,
+            font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0
+        )
+        self.collection_pos_entry.pack(fill=tk.X, padx=14, pady=(0, 10), ipady=6)
 
         tag_label = tk.Label(
             right_page,
@@ -616,38 +674,51 @@ class DictionaryHome:
             relief="flat",
             bd=0
         )
-        self.collection_tag_entry.pack(fill=tk.X, padx=14, pady=(0, 12), ipady=6)
+        self.collection_tag_entry.pack(fill=tk.X, padx=14, pady=(0, 10), ipady=6)
 
-        suggestion_title = tk.Label(
+        example_label = tk.Label(
             right_page,
-            text="建議",
+            text="例句（每行一個）",
             font=("Microsoft JhengHei", 12, "bold"),
             bg="#FBF6EE",
             fg="#4A2F21",
             anchor="w"
         )
-        suggestion_title.pack(fill=tk.X, padx=14, pady=(8, 4))
+        example_label.pack(fill=tk.X, padx=14, pady=(6, 4))
 
-        suggestion_text = tk.Label(
+        self.collection_example_text = tk.Text(
             right_page,
-            text=(
-                "目前核心欄位：\n"
-                "1. 原文\n"
-                "2. 翻譯\n"
-                "3. 讀音\n"
-                "4. 分類 tag\n\n"
-                "之後可補：\n"
-                "5. 詞性\n"
-                "6. 例句\n"
-                "7. 圖片"
-            ),
+            height=5,
             font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            wrap=tk.WORD
+        )
+        self.collection_example_text.pack(fill=tk.X, padx=14, pady=(0, 10))
+
+        usage_label = tk.Label(
+            right_page,
+            text="用法",
+            font=("Microsoft JhengHei", 12, "bold"),
             bg="#FBF6EE",
-            fg="#6A4A35",
-            justify="left",
+            fg="#4A2F21",
             anchor="w"
         )
-        suggestion_text.pack(fill=tk.X, padx=14, pady=(0, 10))
+        usage_label.pack(fill=tk.X, padx=14, pady=(6, 4))
+
+        self.collection_usage_text = tk.Text(
+            right_page,
+            height=5,
+            font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            wrap=tk.WORD
+        )
+        self.collection_usage_text.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 10))
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X)
@@ -665,6 +736,7 @@ class DictionaryHome:
         close_btn.pack(side=tk.RIGHT)
 
         self.refresh_collection_list()
+        self.show_empty_collection_detail()
 
     # =========================================================
     # 3. 考試區（預留）
@@ -857,7 +929,6 @@ class DictionaryHome:
         if self.collection_page < total_pages:
             self.collection_page += 1
             self.refresh_collection_list()
-
     def refresh_collection_list(self):
         if not hasattr(self, "collection_listbox"):
             return
@@ -874,7 +945,13 @@ class DictionaryHome:
 
         page_data = self.get_collection_page_data()
 
+        print("dictionary_data =", len(self.dictionary_data))
+        print("filtered_dictionary_data =", len(self.filtered_dictionary_data))
+        print("page_data =", len(page_data))
+
         for item in page_data:
+            print("item =", item)
+
             word = str(item.get("單字", "")).strip()
             reading = str(item.get("讀音", "")).strip()
             chinese = str(item.get("中文", "")).strip()
@@ -892,9 +969,6 @@ class DictionaryHome:
             self.collection_page_label.config(
                 text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
             )
-
-        print("dictionary_data =", len(self.dictionary_data))
-        print("filtered_dictionary_data =", len(self.filtered_dictionary_data))
 
     def on_select_collection_word(self, event=None):
         if not hasattr(self, "collection_listbox"):
@@ -919,48 +993,94 @@ class DictionaryHome:
 
         self.collection_original_text.delete("1.0", tk.END)
         self.collection_translation_text.delete("1.0", tk.END)
+        self.collection_english_text.delete("1.0", tk.END)
         self.collection_reading_entry.delete(0, tk.END)
+        self.collection_pos_entry.delete(0, tk.END)
         self.collection_tag_entry.delete(0, tk.END)
+        self.collection_example_text.delete("1.0", tk.END)
+        self.collection_usage_text.delete("1.0", tk.END)
 
         self.collection_original_text.insert("1.0", item.get("單字", ""))
         self.collection_translation_text.insert("1.0", item.get("中文", ""))
+        self.collection_english_text.insert("1.0", item.get("英文", ""))
         self.collection_reading_entry.insert(0, item.get("讀音", ""))
+        self.collection_pos_entry.insert(0, item.get("詞性", ""))
 
         tags = item.get("分類", [])
         if isinstance(tags, list):
             self.collection_tag_entry.insert(0, ", ".join(tags))
 
-    def save_collection_entry(self):
-        if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
-            return
+        examples = item.get("例句", [])
+        if isinstance(examples, list):
+            self.collection_example_text.insert("1.0", "\n".join(examples))
 
-        original = self.collection_original_text.get("1.0", tk.END).strip()
-        translation = self.collection_translation_text.get("1.0", tk.END).strip()
-        reading = self.collection_reading_entry.get().strip()
-        tag_raw = self.collection_tag_entry.get().strip()
+            self.collection_usage_text.insert("1.0", item.get("用法", ""))
+        def save_collection_entry(self):
+            if self.current_entry is None:
+                messagebox.showwarning("提示", "請先從左邊選一個單字")
+                return
 
-        tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
+            original = self.collection_original_text.get("1.0", tk.END).strip()
+            chinese = self.collection_translation_text.get("1.0", tk.END).strip()
+            english = self.collection_english_text.get("1.0", tk.END).strip()
+            reading = self.collection_reading_entry.get().strip()
+            pos = self.collection_pos_entry.get().strip()
+            tag_raw = self.collection_tag_entry.get().strip()
+            example_raw = self.collection_example_text.get("1.0", tk.END).strip()
+            usage = self.collection_usage_text.get("1.0", tk.END).strip()
 
-        data = load_dictionary()
+            if not original:
+                messagebox.showwarning("提示", "單字不能空白")
+                return
 
-        target_index = None
-        for i, item in enumerate(data):
-            if item.get("單字", "") == self.current_entry.get("單字", ""):
-                target_index = i
-                break
+            tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
+            examples = [x.strip() for x in example_raw.splitlines() if x.strip()]
 
-        if target_index is None:
-            messagebox.showerror("錯誤", "找不到要儲存的單字")
-            return
+            data = load_dictionary()
 
-        data[target_index]["單字"] = original
-        data[target_index]["中文"] = translation
-        data[target_index]["讀音"] = reading
-        data[target_index]["分類"] = tags
+            target_index = None
+            for i, item in enumerate(data):
+                if item.get("單字", "") == self.current_entry.get("單字", ""):
+                    target_index = i
+                    break
 
-        save_dictionary(data)
+            if target_index is None:
+                messagebox.showerror("錯誤", "找不到要儲存的單字")
+                return
 
-        self.current_entry = data[target_index]
-        self.refresh_collection_list()
-        messagebox.showinfo("成功", "已儲存單字內容")
+            data[target_index]["單字"] = original
+            data[target_index]["中文"] = chinese
+            data[target_index]["英文"] = english
+            data[target_index]["讀音"] = reading
+            data[target_index]["詞性"] = pos
+            data[target_index]["分類"] = tags
+            data[target_index]["例句"] = examples
+            data[target_index]["用法"] = usage
+
+            save_dictionary(data)
+
+            self.current_entry = data[target_index]
+            self.refresh_collection_list()
+            messagebox.showinfo("成功", "已儲存單字內容")
+
+def show_empty_collection_detail(self):
+    if not hasattr(self, "collection_original_text"):
+        return
+
+    self.collection_original_text.delete("1.0", tk.END)
+    self.collection_translation_text.delete("1.0", tk.END)
+    self.collection_english_text.delete("1.0", tk.END)
+    self.collection_reading_entry.delete(0, tk.END)
+    self.collection_pos_entry.delete(0, tk.END)
+    self.collection_tag_entry.delete(0, tk.END)
+    self.collection_example_text.delete("1.0", tk.END)
+    self.collection_usage_text.delete("1.0", tk.END)
+
+    self.collection_original_text.insert("1.0", "請先從左邊選一個單字")
+    self.collection_translation_text.insert("1.0", "這裡會顯示中文翻譯")
+    self.collection_english_text.insert("1.0", "這裡會顯示英文解釋")
+    self.collection_reading_entry.insert(0, "這裡會顯示讀音")
+    self.collection_pos_entry.insert(0, "這裡會顯示詞性")
+    self.collection_tag_entry.insert(0, "這裡會顯示分類 tag")
+    self.collection_example_text.insert("1.0", "這裡會顯示例句")
+    self.collection_usage_text.insert("1.0", "這裡會顯示用法")
