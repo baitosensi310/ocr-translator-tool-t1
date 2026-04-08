@@ -896,7 +896,7 @@ class DictionaryHome:
             self.tree_item_to_entry[item_id] = item
 
     def refresh_collection_list(self):
-        if not hasattr(self, "collection_listbox"):
+        if not hasattr(self, "collection_tree"):
             return
 
         self.load_dictionary_data()
@@ -1060,85 +1060,6 @@ class DictionaryHome:
             messagebox.showinfo("成功", result)
         else:
             messagebox.showerror("錯誤", result)
-
-    def change_current_word_language(self):
-        if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
-            return
-
-        word = self.current_entry.get("單字", "").strip()
-        if not word:
-            messagebox.showwarning("提示", "目前沒有可切換的單字")
-            return
-
-        dialog = tk.Toplevel(self.window)
-        dialog.title("切換語言")
-        dialog.geometry("360x180")
-        dialog.resizable(False, False)
-        dialog.transient(self.window)
-        dialog.grab_set()
-        dialog.configure(bg="#F5EAD9")
-
-        label = tk.Label(
-            dialog,
-            text=f"「{word}」目前語言：{self.current_entry.get('language', 'unknown')}\n請選擇要改成哪個語言：",
-            font=("Microsoft JhengHei", 11),
-            bg="#F5EAD9",
-            fg="#4A2F21",
-            justify="center"
-        )
-        label.pack(pady=(20, 16))
-
-        button_frame = tk.Frame(dialog, bg="#F5EAD9")
-        button_frame.pack()
-
-        for code, text in [("ja", "日文"), ("zh", "中文"), ("en", "英文"), ("ko", "韓文")]:
-            btn = tk.Button(
-                button_frame,
-                text=text,
-                font=("Microsoft JhengHei", 10, "bold"),
-                bg="#8B5E3C",
-                fg="#FFF8EE",
-                activebackground="#A06A43",
-                activeforeground="#FFF8EE",
-                relief="flat",
-                bd=0,
-                padx=14,
-                pady=8,
-                command=lambda c=code: self.apply_language_change(c, dialog)
-            )
-            btn.pack(side=tk.LEFT, padx=6)
-    def apply_language_change(self, new_language, dialog):
-        if self.current_entry is None:
-            dialog.destroy()
-            return
-
-        word = self.current_entry.get("單字", "").strip()
-        if not word:
-            dialog.destroy()
-            return
-
-        data = load_dictionary()
-
-        target_index = None
-        for i, item in enumerate(data):
-            if item.get("單字", "") == word:
-                target_index = i
-                break
-
-        if target_index is None:
-            dialog.destroy()
-            messagebox.showerror("錯誤", "找不到要修改的單字")
-            return
-
-        data[target_index]["language"] = new_language
-        save_dictionary(data)
-
-        self.current_entry = data[target_index]
-        dialog.destroy()
-        self.refresh_collection_list()
-        self.show_collection_detail(self.current_entry)
-        messagebox.showinfo("成功", f"已切換為 {new_language}")
 
     def change_current_word_language(self):
         if self.current_entry is None:
