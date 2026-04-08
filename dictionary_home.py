@@ -773,10 +773,12 @@ class DictionaryHome:
     def apply_collection_filters(self):
         keyword = self.collection_search_var.get().strip().lower()
         selected_tag = self.collection_tag_var.get().strip()
+        selected_language = (self.selected_language or "").strip()
 
         result = []
 
         for item in self.dictionary_data:
+            language = str(item.get("language", "unknown")).strip()
             word = str(item.get("單字", "")).strip()
             chinese = str(item.get("中文", "")).strip()
             reading = str(item.get("讀音", "")).strip()
@@ -785,6 +787,11 @@ class DictionaryHome:
 
             if not isinstance(tags, list):
                 tags = []
+
+            # 入口先決定語言
+            if selected_language and selected_language != "new":
+                if language != selected_language:
+                    continue
 
             full_text = f"{word} {chinese} {reading} {english} {' '.join(tags)}".lower()
 
@@ -830,31 +837,9 @@ class DictionaryHome:
         self.collection_tree.delete(*self.collection_tree.get_children())
         self.tree_item_to_entry = {}
 
-        language_nodes = {}
         category_nodes = {}
 
-        language_names = {
-            "ja": "日文",
-            "en": "英文",
-            "zh": "中文",
-            "ko": "韓文",
-            "unknown": "未分類"
-        }
-
         for item in page_data:
-            language = str(item.get("language", "unknown")).strip() or "unknown"
-            language_label = language_names.get(language, language)
-
-            if language not in language_nodes:
-                language_nodes[language] = self.collection_tree.insert(
-                    "",
-                    "end",
-                    text=language_label,
-                    open=True
-                )
-
-            parent_language_id = language_nodes[language]
-
             tags = item.get("分類", [])
             if not isinstance(tags, list) or not tags:
                 tags = ["未分類"]
@@ -863,17 +848,15 @@ class DictionaryHome:
             if not first_tag:
                 first_tag = "未分類"
 
-            category_key = (language, first_tag)
-
-            if category_key not in category_nodes:
-                category_nodes[category_key] = self.collection_tree.insert(
-                    parent_language_id,
+            if first_tag not in category_nodes:
+                category_nodes[first_tag] = self.collection_tree.insert(
+                    "",
                     "end",
                     text=first_tag,
                     open=True
                 )
 
-            parent_category_id = category_nodes[category_key]
+            parent_category_id = category_nodes[first_tag]
 
             word = str(item.get("單字", "")).strip()
             reading = str(item.get("讀音", "")).strip()

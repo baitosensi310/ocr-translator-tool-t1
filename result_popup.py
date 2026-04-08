@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 import threading
 
 from translator import translate
-from dictionary_manager import add_word, add_word_fast
+from dictionary_manager import add_word, add_word_fast, enrich_word_data_async
 
 
 class ResultPopup:
@@ -256,8 +256,17 @@ class ResultPopup:
                 return
 
             result = add_word_fast(selected_text)
+
+            if result == "NEED_LANGUAGE_CHOICE":
+                self.ask_dictionary_language(selected_text)
+                return
+
+            # 先立即告知成功
             messagebox.showinfo("字典", result, parent=self.window)
             self.set_status(f"字典：{result}")
+
+            # 再背景補資料
+            enrich_word_data_async(selected_text)
 
         except Exception as e:
             messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
@@ -351,8 +360,10 @@ class ResultPopup:
         )
         zh_btn.pack(side=tk.LEFT, padx=8)
 
-    def add_word_with_language(self, selected_text, language, dialog):
-        result = add_word(selected_text, self.source_text, forced_language=language)
-        dialog.destroy()
-        messagebox.showinfo("字典", result, parent=self.window)
-        self.set_status(f"字典：{result}")
+def add_word_with_language(self, selected_text, language, dialog):
+    result = add_word_fast(selected_text, forced_language=language)
+    dialog.destroy()
+    messagebox.showinfo("字典", result, parent=self.window)
+    self.set_status(f"字典：{result}")
+
+    enrich_word_data_async(selected_text)

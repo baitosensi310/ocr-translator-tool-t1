@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime
+import threading
 
 from language_detector import detect_language, is_ambiguous_cjk
 from translator import translate_local
@@ -193,26 +194,46 @@ def find_jmdict_info(word):
         if not results:
             return None
 
-        first_entry = results[0]
-        if not isinstance(first_entry, dict):
-            return None
+        readings = []
+        english_list = []
+        pos_list = []
 
-        info = extract_info(first_entry)
-        if not isinstance(info, dict):
-            return None
+        # 抓前3個結果（避免太亂）
+        for entry in results[:3]:
+            if not isinstance(entry, dict):
+                continue
 
-        english_text = normalize_text(info.get("英文", ""))
-        reading_text = normalize_text(info.get("讀音", ""))
-        pos_text = normalize_text(info.get("詞性", ""))
+            info = extract_info(entry)
+            if not isinstance(info, dict):
+                continue
 
-        chinese_text = ""
+            r = normalize_text(info.get("讀音", ""))
+            e = normalize_text(info.get("英文", ""))
+            p = normalize_text(info.get("詞性", ""))
+
+            if r and r not in readings:
+                readings.append(r)
+
+            if e and e not in english_list:
+                english_list.append(e)
+
+            if p and p not in pos_list:
+                pos_list.append(p)
+
+        # 中文先用日文翻
+        chinese_text = translate_to_chinese(word)
+
+        # 如果翻不到，用英文翻
+        if not chinese_text and english_list:
+            chinese_text = translate_to_chinese(english_list[0])
 
         return {
-            "讀音": reading_text,
-            "英文": english_text,
+            "讀音": " / ".join(readings),
+            "英文": " ; ".join(english_list),
             "中文": chinese_text,
-            "詞性": pos_text
+            "詞性": " , ".join(pos_list)
         }
+
     except Exception as e:
         print("find_jmdict_info 失敗：", e)
         return None
@@ -346,3 +367,68 @@ def add_word_fast(word, forced_language=None):
     save_dictionary(data)
 
     return f"已加入字典（語言：{language}）"
+
+def enrich_word_data(word):
+    word = normalize_text(word)
+    if not word:
+        return "找不到單字"
+
+    data = load_dictionary()
+
+    target_index = None
+    for i, item in enumerate(data):
+        if item.get("單字", "") == word:
+            target_index = i
+            break
+
+    if target_index is None:
+        return "找不到單字"
+
+    item = data[target_index]
+    language = item.get("language", "unknown")
+
+    # 日文補資料
+    if language == "ja":
+        info = find_jmdict_info(word)
+        if info:
+            if not item.get("讀音", ""):
+                item["讀音"] = info.get("讀音", "")
+            if not item.get("英文", ""):
+                item["英文"] = info.get("英文", "")
+            if not item.get("詞性", ""):
+                item["詞性"] = info.get("詞性", "")
+
+        # 中文最後補
+        if not item.get("中文", ""):
+            chinese_text = translate_to_chinese(word)
+
+            if not chinese_text and item.get("英文", ""):
+                chinese_text = translate_to_chinese(item.get("英文", ""))
+
+            item["中文"] = chinese_text
+
+    # 英文補中文
+    elif language == "en":
+        if not item.get("中文", ""):
+            english_meaning = item.get("英文", "")
+
+            if english_meaning:
+                item["中文"] = translate_to_chinese(english_meaning)
+            else:
+                item["中文"] = translate_to_chinese(word)
+
+    # 韓文補中文
+    elif language == "ko":
+        if not item.get("中文", ""):
+            item["中文"] = translate_to_chinese(word)
+
+    save_dictionary(data)
+    return "已補完資料"
+
+def enrich_word_data_async(word):
+    thread = threading.Thread(
+        target=enrich_word_data,
+        args=(word,),
+        daemon=True
+    )
+    thread.start()
