@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from dictionary_manager import load_dictionary, save_dictionary, delete_word
 
 
@@ -11,6 +11,7 @@ class DictionaryHome:
         self.dictionary_data = []
         self.filtered_dictionary_data = []
         self.current_entry = None
+        self.tree_item_to_entry = {}
 
         self.collection_search_var = tk.StringVar()
         self.collection_tag_var = tk.StringVar(value="全部")
@@ -459,18 +460,23 @@ class DictionaryHome:
         )
         self.collection_tag_menu.pack(fill=tk.X)
 
-        self.collection_listbox = tk.Listbox(
-            left_panel,
-            font=("Microsoft JhengHei", 12),
-            bg="#FBF6EE",
-            fg="#3A2A1F",
-            selectbackground="#C89B3C",
-            selectforeground="#3A2A1F",
-            relief="flat",
-            bd=0
+        tree_frame = tk.Frame(left_panel, bg="#EADCC8")
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+
+        tree_scrollbar = tk.Scrollbar(tree_frame)
+        tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.collection_tree = ttk.Treeview(
+            tree_frame,
+            show="tree",
+            yscrollcommand=tree_scrollbar.set,
+            selectmode="browse"
         )
-        self.collection_listbox.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
-        self.collection_listbox.bind("<<ListboxSelect>>", self.on_select_collection_word)
+        self.collection_tree.pack(fill=tk.BOTH, expand=True)
+
+        tree_scrollbar.config(command=self.collection_tree.yview)
+
+        self.collection_tree.bind("<<TreeviewSelect>>", self.on_select_collection_word)
 
         page_bar = tk.Frame(left_panel, bg="#EADCC8")
         page_bar.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -706,16 +712,17 @@ class DictionaryHome:
                 if not word:
                     continue
 
-                cleaned.append({
-                    "單字": str(item.get("單字", "")).strip(),
-                    "讀音": str(item.get("讀音", "")).strip(),
-                    "中文": str(item.get("中文", "")).strip(),
-                    "英文": str(item.get("英文", "")).strip(),
-                    "詞性": str(item.get("詞性", "")).strip(),
-                    "分類": item.get("分類", []) if isinstance(item.get("分類", []), list) else [],
-                    "例句": item.get("例句", []) if isinstance(item.get("例句", []), list) else [],
-                    "用法": str(item.get("用法", "")).strip()
-                })
+            cleaned.append({
+                "language": str(item.get("language", "unknown")).strip() or "unknown",
+                "單字": str(item.get("單字", "")).strip(),
+                "讀音": str(item.get("讀音", "")).strip(),
+                "中文": str(item.get("中文", "")).strip(),
+                "英文": str(item.get("英文", "")).strip(),
+                "詞性": str(item.get("詞性", "")).strip(),
+                "分類": item.get("分類", []) if isinstance(item.get("分類", []), list) else [],
+                "例句": item.get("例句", []) if isinstance(item.get("例句", []), list) else [],
+                "用法": str(item.get("用法", "")).strip()
+            })
 
             self.dictionary_data = cleaned
 
@@ -812,6 +819,78 @@ class DictionaryHome:
             self.collection_page += 1
             self.refresh_collection_list()
 
+    def build_collection_tree(self, page_data):
+        if not hasattr(self, "collection_tree"):
+            return
+
+        self.collection_tree.delete(*self.collection_tree.get_children())
+        self.tree_item_to_entry = {}
+
+        language_nodes = {}
+        category_nodes = {}
+
+        language_names = {
+            "ja": "日文",
+            "en": "英文",
+            "zh": "中文",
+            "ko": "韓文",
+            "unknown": "未分類"
+        }
+
+        for item in page_data:
+            language = str(item.get("language", "unknown")).strip() or "unknown"
+            language_label = language_names.get(language, language)
+
+            if language not in language_nodes:
+                language_nodes[language] = self.collection_tree.insert(
+                    "",
+                    "end",
+                    text=language_label,
+                    open=True
+                )
+
+            parent_language_id = language_nodes[language]
+
+            tags = item.get("分類", [])
+            if not isinstance(tags, list) or not tags:
+                tags = ["未分類"]
+
+            first_tag = str(tags[0]).strip() if tags else "未分類"
+            if not first_tag:
+                first_tag = "未分類"
+
+            category_key = (language, first_tag)
+
+            if category_key not in category_nodes:
+                category_nodes[category_key] = self.collection_tree.insert(
+                    parent_language_id,
+                    "end",
+                    text=first_tag,
+                    open=True
+                )
+
+            parent_category_id = category_nodes[category_key]
+
+            word = str(item.get("單字", "")).strip()
+            reading = str(item.get("讀音", "")).strip()
+            chinese = str(item.get("中文", "")).strip()
+
+            if reading:
+                display_text = f"{word} ({reading})"
+            elif chinese:
+                display_text = f"{word} - {chinese}"
+            else:
+                display_text = word
+
+            item_id = self.collection_tree.insert(
+                parent_category_id,
+                "end",
+                text=display_text,
+                open=False
+            )
+
+            self.tree_item_to_entry[item_id] = item
+
     def refresh_collection_list(self):
         if not hasattr(self, "collection_listbox"):
             return
@@ -824,47 +903,32 @@ class DictionaryHome:
         if self.collection_page > total_pages:
             self.collection_page = total_pages
 
-        self.collection_listbox.delete(0, tk.END)
-
         page_data = self.get_collection_page_data()
 
         print("dictionary_data =", len(self.dictionary_data))
         print("filtered_dictionary_data =", len(self.filtered_dictionary_data))
         print("page_data =", len(page_data))
 
-        for item in page_data:
-            word = str(item.get("單字", "")).strip()
-            reading = str(item.get("讀音", "")).strip()
-            chinese = str(item.get("中文", "")).strip()
-
-            if reading:
-                display_text = f"{word} ({reading})"
-            elif chinese:
-                display_text = f"{word} - {chinese}"
-            else:
-                display_text = word
-
-            self.collection_listbox.insert(tk.END, display_text)
+        self.build_collection_tree(page_data)
 
         self.collection_page_label.config(
             text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
         )
 
     def on_select_collection_word(self, event=None):
-        if not hasattr(self, "collection_listbox"):
+        if not hasattr(self, "collection_tree"):
             return
 
-        selection = self.collection_listbox.curselection()
+        selection = self.collection_tree.selection()
         if not selection:
             return
 
-        index_on_page = selection[0]
-        absolute_index = (self.collection_page - 1) * self.collection_page_size + index_on_page
+        selected_id = selection[0]
 
-        if absolute_index < 0 or absolute_index >= len(self.filtered_dictionary_data):
+        if selected_id not in self.tree_item_to_entry:
             return
 
-        self.current_entry = self.filtered_dictionary_data[absolute_index]
+        self.current_entry = self.tree_item_to_entry[selected_id]
         self.show_collection_detail(self.current_entry)
 
     def show_collection_detail(self, item):

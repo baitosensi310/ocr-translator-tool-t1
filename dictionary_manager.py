@@ -215,10 +215,10 @@ def find_jmdict_info(word):
         }
     except Exception as e:
         print("find_jmdict_info 失敗：", e)
-        return Nonee
+        return None
 
 
-def add_word(word, source_text=""):
+def add_word(word, source_text="", forced_language=None):
     word = normalize_text(word)
     source_text = normalize_text(source_text)
 
@@ -234,22 +234,15 @@ def add_word(word, source_text=""):
         if item.get("單字", "") == word:
             return "已存在"
 
-    word_language = detect_language(word)
-    source_language = detect_language(source_text)
-
-    # 單字若是純漢字模糊詞，就優先繼承整段語言
-    if is_ambiguous_cjk(word):
-        if source_language == "ja":
-            language = "ja"
-        elif source_language == "zh":
-            language = "zh"
-        else:
-            language = "zh"
+    if forced_language:
+        language = forced_language
     else:
+        word_language = detect_language(word)
+
         if word_language == "cjk":
-            language = "zh"
-        else:
-            language = word_language
+            return "NEED_LANGUAGE_CHOICE"
+
+        language = word_language
 
     new_entry = create_empty_entry(word, language=language)
 
@@ -261,9 +254,6 @@ def add_word(word, source_text=""):
             new_entry["英文"] = info.get("英文", "")
             new_entry["中文"] = info.get("中文", "")
             new_entry["詞性"] = info.get("詞性", "")
-
-#if not new_entry["中文"]:
-#  new_entry["中文"] = translate_to_chinese(word) 先不用
 
     # 英文
     elif language == "en":
@@ -312,3 +302,43 @@ def delete_word(word):
 
     save_dictionary(new_data)
     return "已刪除單字"
+
+def add_word_fast(word, forced_language=None):
+    word = normalize_text(word)
+
+    if not word:
+        return "不能加入空白文字"
+
+    if is_probably_sentence(word):
+        return "這段內容看起來像句子，請先反白單字再加入"
+
+    data = load_dictionary()
+
+    for item in data:
+        if item.get("單字", "") == word:
+            return "已存在"
+
+    if forced_language:
+        language = forced_language
+    else:
+        detected = detect_language(word)
+        if detected == "cjk":
+            return "NEED_LANGUAGE_CHOICE"
+        language = detected
+
+    new_entry = create_empty_entry(word, language=language)
+
+    # 先只存最基本欄位，不查 JMdict，不翻譯
+    if language == "zh":
+        new_entry["中文"] = word
+        new_entry["詞性"] = "中文"
+    elif language == "en":
+        new_entry["英文"] = word
+        new_entry["詞性"] = "英文"
+    elif language == "ko":
+        new_entry["詞性"] = "韓文"
+
+    data.append(new_entry)
+    save_dictionary(data)
+
+    return f"已加入字典（語言：{language}）"

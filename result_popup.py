@@ -255,7 +255,12 @@ class ResultPopup:
                 )
                 return
 
-            result = add_word(selected_text, self.source_text)
+            result = add_word_fast(selected_text, forced_language=language)
+
+            if result == "NEED_LANGUAGE_CHOICE":
+                self.ask_dictionary_language(selected_text)
+                return
+
             messagebox.showinfo("字典", result, parent=self.window)
             self.set_status(f"字典：{result}")
 
@@ -296,3 +301,63 @@ class ResultPopup:
     def show(self):
         self.window.lift()
         self.window.focus_force()
+
+    def ask_dictionary_language(self, selected_text):
+        dialog = tk.Toplevel(self.window)
+        dialog.title("選擇字典")
+        dialog.geometry("320x160")
+        dialog.resizable(False, False)
+        dialog.transient(self.window)
+        dialog.grab_set()
+        dialog.configure(bg="#F5EAD9")
+
+        label = tk.Label(
+            dialog,
+            text=f"「{selected_text}」只有漢字\n請選擇要加入哪個字典：",
+            font=("Microsoft JhengHei", 11),
+            bg="#F5EAD9",
+            fg="#4A2F21",
+            justify="center"
+        )
+        label.pack(pady=(20, 16))
+
+        button_frame = tk.Frame(dialog, bg="#F5EAD9")
+        button_frame.pack()
+
+        ja_btn = tk.Button(
+            button_frame,
+            text="日文字典",
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=16,
+            pady=8,
+            command=lambda: self.add_word_with_language(selected_text, "ja", dialog)
+        )
+        ja_btn.pack(side=tk.LEFT, padx=8)
+
+        zh_btn = tk.Button(
+            button_frame,
+            text="中文字典",
+            font=("Microsoft JhengHei", 10, "bold"),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            padx=16,
+            pady=8,
+            command=lambda: self.add_word_with_language(selected_text, "zh", dialog)
+        )
+        zh_btn.pack(side=tk.LEFT, padx=8)
+
+    def add_word_with_language(self, selected_text, language, dialog):
+        result = add_word(selected_text, self.source_text, forced_language=language)
+        dialog.destroy()
+        messagebox.showinfo("字典", result, parent=self.window)
+        self.set_status(f"字典：{result}")
