@@ -255,7 +255,7 @@ class ResultPopup:
                 )
                 return
 
-            result = add_word(selected_text)
+            result = add_word(selected_text, self.source_text)
             messagebox.showinfo("字典", result, parent=self.window)
             self.set_status(f"字典：{result}")
 
