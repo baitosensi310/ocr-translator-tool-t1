@@ -55,6 +55,9 @@ def create_empty_entry(word, language="unknown"):
         "分類": [],
         "例句": [],
         "用法": "",
+        "補充": "",
+        "圖片": "",
+        "左頁分割": [0.18, 0.42, 0.40],
         "加入時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
@@ -83,6 +86,9 @@ def normalize_entry(item):
             "分類": [tag] if tag else [],
             "例句": [],
             "用法": "",
+            "補充": "",
+            "圖片": "",
+            "左頁分割": [0.18, 0.42, 0.40],
             "加入時間": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
@@ -104,6 +110,9 @@ def normalize_entry(item):
         "分類": normalize_tag_list(item.get("分類", [])),
         "例句": normalize_example_list(item.get("例句", [])),
         "用法": normalize_text(item.get("用法", "")),
+        "補充": normalize_text(item.get("補充", "")),
+        "圖片": normalize_text(item.get("圖片", "")),
+        "左頁分割": item.get("左頁分割", [0.18, 0.42, 0.40]) if isinstance(item.get("左頁分割", [0.18, 0.42, 0.40]), list) else [0.18, 0.42, 0.40],
         "加入時間": normalize_text(item.get("加入時間", "")) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 

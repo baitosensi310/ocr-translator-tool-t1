@@ -1,12 +1,23 @@
 import random
+import re
 import tkinter as tk
+import pyperclip
+from tkinter import filedialog
 from tkinter import messagebox, ttk
-from dictionary_manager import load_dictionary, save_dictionary, delete_word
+from PIL import Image, ImageTk
+from dictionary_manager import (
+    add_word_fast,
+    delete_word,
+    enrich_word_data_async,
+    load_dictionary,
+    save_dictionary,
+)
 
 
 class DictionaryHome:
     def __init__(self, parent):
         self.parent = parent
+        self.parent_window = getattr(parent, "root", parent)
         self.selected_language = None
 
         self.dictionary_data = []
@@ -14,6 +25,9 @@ class DictionaryHome:
         self.collection_flat_items = []
         self.current_entry = None
         self.tree_item_to_entry = {}
+        self.collection_image_preview = None
+        self.collection_current_image_path = ""
+        self.collection_split_apply_job = None
 
         self.collection_search_var = tk.StringVar()
         self.collection_tag_var = tk.StringVar(value="全部")
@@ -27,10 +41,10 @@ class DictionaryHome:
         self.exam_score = 0
         self.exam_total = 0
 
-        self.window = tk.Toplevel(self.parent)
+        self.window = tk.Toplevel(self.parent_window)
         self.window.title("字典主頁")
-        self.window.geometry("1280x780+260+120")
-        self.window.minsize(1080, 680)
+        self.window.geometry("1320x920+220+80")
+        self.window.minsize(1180, 760)
         self.window.configure(bg="#F5EAD9")
 
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
@@ -67,6 +81,213 @@ class DictionaryHome:
             cursor="hand2"
         )
 
+    def create_footer_button(self, parent, text, command, primary=False):
+        return self.create_soft_button(
+            parent,
+            text,
+            command,
+            width=14 if primary else 12,
+            big=True
+        )
+
+    def is_katakana_only(self, text):
+        text = str(text).strip()
+        if not text:
+            return False
+
+        has_katakana = False
+        for char in text:
+            if char in " 　・ー":
+                continue
+
+            code = ord(char)
+            if 0x30A0 <= code <= 0x30FF:
+                has_katakana = True
+                continue
+
+            return False
+
+        return has_katakana
+
+    def to_hiragana(self, text):
+        result = []
+        for char in str(text):
+            code = ord(char)
+            if 0x30A1 <= code <= 0x30F6:
+                result.append(chr(code - 0x60))
+            else:
+                result.append(char)
+        return "".join(result)
+
+    def kana_to_romaji(self, text):
+        text = self.to_hiragana(text).strip()
+        if not text:
+            return ""
+
+        digraph_map = {
+            "きゃ": "kya", "きゅ": "kyu", "きょ": "kyo",
+            "ぎゃ": "gya", "ぎゅ": "gyu", "ぎょ": "gyo",
+            "しゃ": "sha", "しゅ": "shu", "しょ": "sho",
+            "じゃ": "jya", "じゅ": "jyu", "じょ": "jyo",
+            "ちゃ": "cha", "ちゅ": "chu", "ちょ": "cho",
+            "にゃ": "nya", "にゅ": "nyu", "にょ": "nyo",
+            "ひゃ": "hya", "ひゅ": "hyu", "ひょ": "hyo",
+            "びゃ": "bya", "びゅ": "byu", "びょ": "byo",
+            "ぴゃ": "pya", "ぴゅ": "pyu", "ぴょ": "pyo",
+            "みゃ": "mya", "みゅ": "myu", "みょ": "myo",
+            "りゃ": "rya", "りゅ": "ryu", "りょ": "ryo",
+            "ゔぁ": "va", "ゔぃ": "vi", "ゔぇ": "ve", "ゔぉ": "vo",
+            "ふぁ": "fa", "ふぃ": "fi", "ふぇ": "fe", "ふぉ": "fo",
+            "てぃ": "ti", "でぃ": "di", "とぅ": "tu", "どぅ": "du",
+            "つぁ": "tsa", "つぃ": "tsi", "つぇ": "tse", "つぉ": "tso",
+            "しぇ": "she", "じぇ": "je", "ちぇ": "che"
+        }
+        base_map = {
+            "あ": "a", "い": "i", "う": "u", "え": "e", "お": "o",
+            "か": "ka", "き": "ki", "く": "ku", "け": "ke", "こ": "ko",
+            "が": "ga", "ぎ": "gi", "ぐ": "gu", "げ": "ge", "ご": "go",
+            "さ": "sa", "し": "shi", "す": "su", "せ": "se", "そ": "so",
+            "ざ": "za", "じ": "ji", "ず": "zu", "ぜ": "ze", "ぞ": "zo",
+            "た": "ta", "ち": "chi", "つ": "tsu", "て": "te", "と": "to",
+            "だ": "da", "ぢ": "ji", "づ": "zu", "で": "de", "ど": "do",
+            "な": "na", "に": "ni", "ぬ": "nu", "ね": "ne", "の": "no",
+            "は": "ha", "ひ": "hi", "ふ": "fu", "へ": "he", "ほ": "ho",
+            "ば": "ba", "び": "bi", "ぶ": "bu", "べ": "be", "ぼ": "bo",
+            "ぱ": "pa", "ぴ": "pi", "ぷ": "pu", "ぺ": "pe", "ぽ": "po",
+            "ま": "ma", "み": "mi", "む": "mu", "め": "me", "も": "mo",
+            "や": "ya", "ゆ": "yu", "よ": "yo",
+            "ら": "ra", "り": "ri", "る": "ru", "れ": "re", "ろ": "ro",
+            "わ": "wa", "を": "o", "ん": "n",
+            "ぁ": "a", "ぃ": "i", "ぅ": "u", "ぇ": "e", "ぉ": "o",
+            "ゔ": "vu"
+        }
+
+        parts = []
+        i = 0
+        pending_sokuon = False
+
+        while i < len(text):
+            char = text[i]
+
+            if char in " 　":
+                i += 1
+                continue
+
+            if char == "っ":
+                pending_sokuon = True
+                i += 1
+                continue
+
+            if char == "ー":
+                if parts:
+                    last = parts[-1]
+                    if last[-1] in "aeiou":
+                        parts[-1] = last + last[-1]
+                i += 1
+                continue
+
+            kana = text[i:i + 2] if i + 1 < len(text) else ""
+            if kana in digraph_map:
+                romaji = digraph_map[kana]
+                i += 2
+            else:
+                romaji = base_map.get(char, char)
+                i += 1
+
+            if pending_sokuon and romaji:
+                romaji = romaji[0] + romaji
+                pending_sokuon = False
+
+            parts.append(romaji)
+
+        compact = "".join(parts)
+        compact = compact.replace("ouei", "ou ei")
+
+        compact = re.sub(r"([aeiou])([kgsztdnhbpmrywjfvc][a-z]+)$", r"\1 \2", compact)
+        compact = compact.replace("nn", "n n")
+        compact = re.sub(r"([aeiou])\s+n([aeiou])", r"\1n \2", compact)
+        compact = re.sub(r"([aeiou])\s+n([kgsztdnhbpmrywjfvc])", r"\1n \2", compact)
+        compact = re.sub(r"\s+", " ", compact).strip()
+        return compact
+
+    def normalize_exam_reading(self, text):
+        text = str(text).strip().lower()
+        if not text:
+            return ""
+
+        text = self.to_hiragana(text)
+        text = re.sub(r"[^a-z0-9ぁ-ん]", "", text)
+        return text
+
+    def split_exam_readings(self, text):
+        raw = str(text).strip()
+        if not raw:
+            return []
+
+        parts = re.split(r"\s*[/／;,；，]\s*", raw)
+        return [part.strip() for part in parts if part.strip()]
+
+    def build_exam_reading_answers(self, reading_text):
+        answers = set()
+
+        for reading in self.split_exam_readings(reading_text):
+            normalized_hiragana = self.normalize_exam_reading(reading)
+            if normalized_hiragana:
+                answers.add(normalized_hiragana)
+
+            romaji = self.kana_to_romaji(reading)
+            normalized_romaji = self.normalize_exam_reading(romaji)
+            if normalized_romaji:
+                answers.add(normalized_romaji)
+
+        return answers
+
+    def sanitize_english_text(self, text, limit=4):
+        raw = str(text).strip()
+        if not raw:
+            return ""
+
+        parts = [part.strip() for part in raw.split(";") if part.strip()]
+        english_parts = []
+
+        for part in parts:
+            if re.fullmatch(r"[A-Za-z0-9 ,.'/(){}\[\]\-:+?!&%]+", part):
+                english_parts.append(part)
+
+        if not english_parts:
+            fallback = raw[:120].strip()
+            return fallback + "..." if len(raw) > 120 else fallback
+
+        return "; ".join(english_parts[:limit])
+
+    def format_reading_with_romaji(self, reading):
+        readings = self.split_exam_readings(reading)
+        if not readings:
+            return "未填寫"
+
+        formatted = []
+        for item in readings:
+            hira = self.to_hiragana(item)
+            romaji = self.kana_to_romaji(item)
+            if romaji:
+                formatted.append(f"{hira} ({romaji})")
+            else:
+                formatted.append(hira)
+
+        return " / ".join(formatted)
+
+    def set_exam_choice(self, value):
+        self.exam_choice_var.set(value)
+
+        for btn in self.exam_choice_buttons:
+            option = getattr(btn, "option_value", "")
+            is_selected = option == value
+            marker = "◎" if is_selected else "○"
+            btn.config(
+                text=f"{marker}  {option}",
+                fg="#8B5E3C" if is_selected else "#6A4A35"
+            )
+
     def get_language_name(self, code):
         mapping = {
             "ja": "日文字典",
@@ -82,9 +303,97 @@ class DictionaryHome:
 
     def hide_toolbar(self):
         try:
-            self.parent.withdraw()
+            self.parent_window.withdraw()
         except Exception:
             messagebox.showwarning("提示", "目前無法隱藏工具列")
+
+    def get_external_translation_context(self):
+        if hasattr(self.parent, "get_current_translation_context"):
+            try:
+                context = self.parent.get_current_translation_context()
+                if isinstance(context, dict):
+                    source_text = str(context.get("source_text", "")).strip()
+                    translated_text = str(context.get("translated_text", "")).strip()
+                    if source_text or translated_text:
+                        return {
+                            "source_text": source_text,
+                            "translated_text": translated_text
+                        }
+            except Exception:
+                pass
+
+        clipboard_text = ""
+        try:
+            clipboard_text = pyperclip.paste().strip()
+        except Exception:
+            clipboard_text = ""
+
+        return {
+            "source_text": clipboard_text,
+            "translated_text": ""
+        }
+
+    def refresh_external_context(self):
+        if hasattr(self, "translation_source_text") and hasattr(self, "translation_result_text"):
+            self.populate_translation_area()
+
+    def populate_translation_area(self):
+        if not hasattr(self, "translation_source_text") or not hasattr(self, "translation_result_text"):
+            return
+
+        context = self.get_external_translation_context()
+        source_text = str(context.get("source_text", "")).strip()
+        translated_text = str(context.get("translated_text", "")).strip()
+
+        self.translation_source_text.delete("1.0", tk.END)
+        self.translation_result_text.delete("1.0", tk.END)
+
+        self.translation_source_text.insert("1.0", source_text or "目前沒有可顯示的原文")
+        self.translation_result_text.insert("1.0", translated_text or "目前沒有可顯示的翻譯")
+
+    def get_selected_text_from_widget(self, widget):
+        try:
+            return widget.get("sel.first", "sel.last").strip()
+        except Exception:
+            return ""
+
+    def add_selected_translation_text_to_dict(self, widget):
+        selected_text = self.get_selected_text_from_widget(widget)
+        if not selected_text:
+            messagebox.showinfo("字典", "請先反白要加入字典的文字", parent=self.window)
+            return
+
+        try:
+            result = add_word_fast(selected_text)
+            if result.startswith("已加入字典"):
+                enrich_word_data_async(selected_text)
+                messagebox.showinfo(
+                    "字典",
+                    f"{result}\n背景正在補充讀音 / 中文 / 英文 / 詞性",
+                    parent=self.window
+                )
+            else:
+                messagebox.showinfo("字典", result, parent=self.window)
+        except Exception as e:
+            messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
+
+    def copy_selected_text_from_widget(self, widget):
+        selected_text = self.get_selected_text_from_widget(widget)
+        if not selected_text:
+            return
+
+        self.window.clipboard_clear()
+        self.window.clipboard_append(selected_text)
+        self.window.update()
+
+    def show_translation_menu(self, event, widget):
+        self.translation_context_widget = widget
+        self.translation_menu.tk_popup(event.x_root, event.y_root)
+        self.translation_menu.grab_release()
+
+    def handle_translation_ctrl_c(self, event, widget):
+        self.copy_selected_text_from_widget(widget)
+        return "break"
 
     # =========================================================
     # 首頁
@@ -191,7 +500,7 @@ class DictionaryHome:
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
 
-        close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
+        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
     # =========================================================
@@ -278,10 +587,10 @@ class DictionaryHome:
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(16, 0))
 
-        back_btn = self.create_soft_button(bottom, "返回語言選擇", self.build_home_page, width=12)
+        back_btn = self.create_footer_button(bottom, "返回語言選擇", self.build_home_page, primary=True)
         back_btn.pack(side=tk.LEFT)
 
-        close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
+        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
     # =========================================================
@@ -369,18 +678,57 @@ class DictionaryHome:
         )
         self.translation_result_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
+        self.translation_context_widget = self.translation_source_text
+        self.translation_menu = tk.Menu(self.window, tearoff=0)
+        self.translation_menu.add_command(
+            label="複製選取",
+            command=lambda: self.copy_selected_text_from_widget(self.translation_context_widget)
+        )
+        self.translation_menu.add_command(
+            label="加入字典",
+            command=lambda: self.add_selected_translation_text_to_dict(self.translation_context_widget)
+        )
+
+        self.translation_source_text.bind(
+            "<Button-3>",
+            lambda event: self.show_translation_menu(event, self.translation_source_text)
+        )
+        self.translation_result_text.bind(
+            "<Button-3>",
+            lambda event: self.show_translation_menu(event, self.translation_result_text)
+        )
+        self.translation_source_text.bind(
+            "<Control-c>",
+            lambda event: self.handle_translation_ctrl_c(event, self.translation_source_text)
+        )
+        self.translation_result_text.bind(
+            "<Control-c>",
+            lambda event: self.handle_translation_ctrl_c(event, self.translation_result_text)
+        )
+
+        try:
+            self.populate_translation_area()
+        except Exception as e:
+            self.translation_source_text.delete("1.0", tk.END)
+            self.translation_result_text.delete("1.0", tk.END)
+            self.translation_source_text.insert("1.0", "目前沒有可顯示的原文")
+            self.translation_result_text.insert("1.0", f"翻譯區載入失敗：{e}")
+
         outer.after(120, lambda: content.sash_place(0, 520, 0))
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
 
-        back_btn = self.create_soft_button(bottom, "返回索引", self.build_index_page_callback, width=10)
+        left_actions = tk.Frame(bottom, bg="#F5EAD9")
+        left_actions.pack(side=tk.LEFT)
+
+        back_btn = self.create_footer_button(left_actions, "返回索引", self.build_index_page_callback, primary=True)
         back_btn.pack(side=tk.LEFT)
 
-        hide_toolbar_btn = self.create_soft_button(bottom, "隱藏工具列", self.hide_toolbar, width=10)
-        hide_toolbar_btn.pack(side=tk.LEFT, padx=10)
+        hide_toolbar_btn = self.create_footer_button(left_actions, "隱藏工具列", self.hide_toolbar)
+        hide_toolbar_btn.pack(side=tk.LEFT, padx=(12, 0))
 
-        close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
+        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
     # =========================================================
@@ -529,30 +877,33 @@ class DictionaryHome:
         )
         left_page_title.pack()
 
-        upload_hint = tk.Label(
-            left_page,
-            text="這裡之後可放圖片\n可讓使用者上傳插圖，或先留白",
-            font=("Microsoft JhengHei", 11),
-            bg="#FBF6EE",
-            fg="#6A4A35",
-            justify="center",
-            pady=20
-        )
-        upload_hint.pack()
+        left_content = tk.Frame(left_page, bg="#FBF6EE")
+        left_content.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 14))
+
+        original_section = tk.Frame(left_content, bg="#FBF6EE", bd=0, height=90)
+        original_section.pack(fill=tk.X, pady=(0, 10))
+        original_section.pack_propagate(False)
+
+        note_section = tk.Frame(left_content, bg="#FBF6EE", bd=0, height=180)
+        note_section.pack(fill=tk.X, pady=(0, 10))
+        note_section.pack_propagate(False)
+
+        image_section = tk.Frame(left_content, bg="#FBF6EE", bd=0)
+        image_section.pack(fill=tk.BOTH, expand=True)
 
         original_label = tk.Label(
-            left_page,
+            original_section,
             text="原文",
             font=("Microsoft JhengHei", 12, "bold"),
             bg="#FBF6EE",
             fg="#4A2F21",
             anchor="w"
         )
-        original_label.pack(fill=tk.X, padx=14, pady=(12, 4))
+        original_label.pack(fill=tk.X, pady=(0, 4))
 
         self.collection_original_text = tk.Text(
-            left_page,
-            height=8,
+            original_section,
+            height=1,
             font=("Microsoft JhengHei", 11),
             bg="#F8F1E7",
             fg="#3A2A1F",
@@ -560,7 +911,68 @@ class DictionaryHome:
             bd=0,
             wrap=tk.WORD
         )
-        self.collection_original_text.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 14))
+        self.collection_original_text.pack(fill=tk.BOTH, expand=True)
+
+        note_label = tk.Label(
+            note_section,
+            text="補充",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        note_label.pack(fill=tk.X, pady=(0, 4))
+
+        self.collection_note_text = tk.Text(
+            note_section,
+            height=5,
+            font=("Microsoft JhengHei", 11),
+            bg="#F8F1E7",
+            fg="#3A2A1F",
+            relief="flat",
+            bd=0,
+            wrap=tk.WORD
+        )
+        self.collection_note_text.pack(fill=tk.BOTH, expand=True)
+
+        image_header = tk.Frame(image_section, bg="#FBF6EE")
+        image_header.pack(fill=tk.X)
+
+        image_label = tk.Label(
+            image_header,
+            text="圖片區",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        image_label.pack(side=tk.LEFT)
+
+        image_add_btn = self.create_soft_button(image_header, "放入圖片", self.choose_collection_image, width=8)
+        image_add_btn.pack(side=tk.RIGHT)
+
+        image_clear_btn = self.create_soft_button(image_header, "清除圖片", self.clear_collection_image, width=8)
+        image_clear_btn.pack(side=tk.RIGHT, padx=(0, 8))
+
+        self.collection_image_info_label = tk.Label(
+            image_section,
+            text="可放入圖片或 GIF，會跟著這個單字一起保存",
+            font=("Microsoft JhengHei", 10),
+            bg="#FBF6EE",
+            fg="#6A4A35",
+            anchor="w"
+        )
+        self.collection_image_info_label.pack(fill=tk.X, pady=(6, 8))
+
+        self.collection_image_preview_label = tk.Label(
+            image_section,
+            bg="#F8F1E7",
+            fg="#6A4A35",
+            text="尚未放入圖片",
+            anchor="center",
+            justify="center"
+        )
+        self.collection_image_preview_label.pack(fill=tk.BOTH, expand=True)
 
         right_page_title = tk.Label(
             right_page,
@@ -583,26 +995,32 @@ class DictionaryHome:
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X)
 
-        refresh_btn = self.create_soft_button(bottom, "重新整理", self.reload_collection_area, width=10)
-        refresh_btn.pack(side=tk.LEFT)
+        left_actions = tk.Frame(bottom, bg="#F5EAD9")
+        left_actions.pack(side=tk.LEFT)
 
-        save_btn = self.create_soft_button(bottom, "儲存內容", self.save_collection_entry, width=10)
-        save_btn.pack(side=tk.LEFT, padx=10)
+        back_btn = self.create_footer_button(left_actions, "返回索引", self.build_index_page_callback, primary=True)
+        back_btn.pack(side=tk.LEFT)
 
-        back_btn = self.create_soft_button(bottom, "返回索引", self.build_index_page_callback, width=10)
-        back_btn.pack(side=tk.LEFT, padx=10)
+        refresh_btn = self.create_footer_button(left_actions, "重新整理", self.reload_collection_area)
+        refresh_btn.pack(side=tk.LEFT, padx=(12, 0))
 
-        close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
+        save_btn = self.create_footer_button(left_actions, "儲存內容", self.save_collection_entry)
+        save_btn.pack(side=tk.LEFT, padx=(12, 0))
+
+        middle_actions = tk.Frame(bottom, bg="#F5EAD9")
+        middle_actions.pack(side=tk.LEFT, padx=18)
+
+        delete_btn = self.create_footer_button(middle_actions, "刪除單字", self.delete_current_word)
+        delete_btn.pack(side=tk.LEFT)
+
+        change_lang_btn = self.create_footer_button(middle_actions, "切換語言", self.change_current_word_language)
+        change_lang_btn.pack(side=tk.LEFT, padx=(12, 0))
+
+        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
         self.refresh_collection_list()
         self.show_empty_collection_detail()
-
-        delete_btn = self.create_soft_button(bottom, "刪除單字", self.delete_current_word, width=10)
-        delete_btn.pack(side=tk.LEFT, padx=10)
-
-        change_lang_btn = self.create_soft_button(bottom, "切換語言", self.change_current_word_language, width=10)
-        change_lang_btn.pack(side=tk.LEFT, padx=10)
 
 
     def create_labeled_entry(self, parent, label_text):
@@ -650,6 +1068,120 @@ class DictionaryHome:
         )
         text_widget.pack(fill=tk.X, padx=14, pady=(0, 10))
         return text_widget
+
+    def normalize_collection_split(self, value):
+        default = [0.18, 0.32, 0.50]
+        if not isinstance(value, list) or len(value) != 3:
+            return default
+
+        try:
+            result = [float(x) for x in value]
+        except Exception:
+            return default
+
+        total = sum(result)
+        if total <= 0:
+            return default
+
+        result = [max(0.1, x / total) for x in result]
+        total = sum(result)
+        return [x / total for x in result]
+
+    def apply_collection_split(self, split_value):
+        if not hasattr(self, "collection_left_pane"):
+            return
+
+        split_value = self.normalize_collection_split(split_value)
+        pane_height = max(self.collection_left_pane.winfo_height(), 320)
+        sash1 = int(pane_height * split_value[0])
+        sash2 = int(pane_height * (split_value[0] + split_value[1]))
+
+        try:
+            self.collection_left_pane.sash_place(0, 1, sash1)
+            self.collection_left_pane.sash_place(1, 1, sash2)
+        except Exception:
+            pass
+
+    def schedule_apply_collection_split(self, split_value):
+        if not hasattr(self, "collection_left_pane"):
+            return
+
+        if self.collection_split_apply_job is not None:
+            try:
+                self.window.after_cancel(self.collection_split_apply_job)
+            except Exception:
+                pass
+
+        self.collection_split_apply_job = self.window.after(
+            80, lambda: self.apply_collection_split(split_value)
+        )
+
+    def get_current_collection_split(self):
+        if not hasattr(self, "collection_left_pane"):
+            return [0.18, 0.32, 0.50]
+
+        pane_height = max(self.collection_left_pane.winfo_height(), 320)
+        try:
+            sash1 = self.collection_left_pane.sash_coord(0)[1]
+            sash2 = self.collection_left_pane.sash_coord(1)[1]
+        except Exception:
+            return [0.18, 0.32, 0.50]
+
+        top = max(0.1, sash1 / pane_height)
+        middle = max(0.1, (sash2 - sash1) / pane_height)
+        bottom = max(0.1, (pane_height - sash2) / pane_height)
+        return self.normalize_collection_split([top, middle, bottom])
+
+    def on_collection_pane_resize(self, event=None):
+        if self.current_entry is None:
+            return
+        self.current_entry["左頁分割"] = self.get_current_collection_split()
+
+    def choose_collection_image(self):
+        if self.current_entry is None:
+            messagebox.showwarning("提示", "請先從左邊選一個單字")
+            return
+
+        path = filedialog.askopenfilename(
+            parent=self.window,
+            title="選擇圖片",
+            filetypes=[
+                ("圖片檔", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp"),
+                ("所有檔案", "*.*")
+            ]
+        )
+        if not path:
+            return
+
+        self.collection_current_image_path = path
+        self.show_collection_image(path)
+
+    def clear_collection_image(self):
+        self.collection_current_image_path = ""
+        self.collection_image_preview = None
+        if hasattr(self, "collection_image_preview_label"):
+            self.collection_image_preview_label.config(image="", text="尚未放入圖片")
+        if hasattr(self, "collection_image_info_label"):
+            self.collection_image_info_label.config(text="可放入圖片或 GIF，會跟著這個單字一起保存")
+
+    def show_collection_image(self, path):
+        path = str(path).strip()
+        if not path:
+            self.clear_collection_image()
+            return
+
+        try:
+            image = Image.open(path)
+            image.thumbnail((420, 260))
+            self.collection_image_preview = ImageTk.PhotoImage(image)
+            self.collection_image_preview_label.config(image=self.collection_image_preview, text="")
+            self.collection_image_info_label.config(text=path)
+            self.collection_current_image_path = path
+        except Exception:
+            self.collection_image_preview = None
+            self.collection_image_preview_label.config(image="", text="圖片載入失敗")
+            self.collection_image_info_label.config(text=path)
+
 
     # =========================================================
     # 3. 考試區
@@ -762,9 +1294,12 @@ class DictionaryHome:
             command=self.on_exam_filter_changed,
             font=("Microsoft JhengHei", 10),
             bg="#EADCC8",
-            fg="#3A2A1F",
+            fg="#6A4A35",
             selectcolor="#FBF6EE",
             activebackground="#EADCC8",
+            activeforeground="#6A4A35",
+            highlightthickness=0,
+            bd=0,
             anchor="w",
             justify="left"
         )
@@ -778,9 +1313,12 @@ class DictionaryHome:
             command=self.on_exam_filter_changed,
             font=("Microsoft JhengHei", 10),
             bg="#EADCC8",
-            fg="#3A2A1F",
+            fg="#6A4A35",
             selectcolor="#FBF6EE",
             activebackground="#EADCC8",
+            activeforeground="#6A4A35",
+            highlightthickness=0,
+            bd=0,
             anchor="w",
             justify="left"
         )
@@ -879,18 +1417,22 @@ class DictionaryHome:
         choice_frame = tk.Frame(quiz_card, bg="#FBF6EE")
         choice_frame.pack(fill=tk.X, padx=18, pady=(0, 12))
         for _ in range(4):
-            btn = tk.Radiobutton(
+            btn = tk.Button(
                 choice_frame,
                 text="",
-                variable=self.exam_choice_var,
-                value="",
                 font=("Microsoft JhengHei", 11),
                 bg="#FBF6EE",
-                fg="#3A2A1F",
-                selectcolor="#FFF7E8",
+                fg="#6A4A35",
                 activebackground="#FBF6EE",
+                activeforeground="#6A4A35",
+                highlightthickness=0,
+                bd=0,
                 anchor="w",
-                justify="left"
+                justify="left",
+                relief="flat",
+                cursor="hand2",
+                padx=0,
+                pady=4
             )
             btn.pack(fill=tk.X, pady=3)
             self.exam_choice_buttons.append(btn)
@@ -936,10 +1478,10 @@ class DictionaryHome:
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
 
-        back_btn = self.create_soft_button(bottom, "返回索引", self.build_index_page_callback, width=10)
+        back_btn = self.create_footer_button(bottom, "返回索引", self.build_index_page_callback, primary=True)
         back_btn.pack(side=tk.LEFT)
 
-        close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
+        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
     def get_exam_tag_options(self):
@@ -1003,6 +1545,9 @@ class DictionaryHome:
             if mode == "reading_input" and not reading:
                 continue
 
+            if mode == "reading_input" and self.is_katakana_only(word):
+                continue
+
             if mode == "meaning_choice" and not chinese:
                 continue
 
@@ -1039,6 +1584,7 @@ class DictionaryHome:
             self.exam_prompt_label.config(text=item.get("單字", ""))
             chinese = str(item.get("中文", "")).strip()
             hint_text = f"中文提示：{chinese}" if chinese else "中文提示：目前沒有中文，可直接憑記憶作答"
+            hint_text += "\n請輸入羅馬讀音或平假名"
             self.exam_hint_label.config(text=hint_text)
             for btn in self.exam_choice_buttons:
                 btn.pack_forget()
@@ -1049,7 +1595,9 @@ class DictionaryHome:
         self.exam_question_type_label.config(text="題型：看中文選單字")
         self.exam_prompt_label.config(text=str(item.get("中文", "")).strip())
         reading = str(item.get("讀音", "")).strip()
-        self.exam_hint_label.config(text=f"讀音提示：{reading}" if reading else "讀音提示：無")
+        self.exam_hint_label.config(
+            text=f"讀音提示：{self.format_reading_with_romaji(reading)}" if reading else "讀音提示：無"
+        )
         self.exam_answer_entry.pack_forget()
 
         options = self.build_exam_choices(item)
@@ -1057,8 +1605,11 @@ class DictionaryHome:
             btn.pack_forget()
 
         for btn, option in zip(self.exam_choice_buttons, options):
-            btn.config(text=option, value=option)
+            btn.option_value = option
+            btn.config(command=lambda value=option: self.set_exam_choice(value))
             btn.pack(fill=tk.X, pady=3)
+
+        self.set_exam_choice("")
 
     def build_exam_choices(self, correct_item):
         correct_word = str(correct_item.get("單字", "")).strip()
@@ -1105,7 +1656,13 @@ class DictionaryHome:
             self.exam_feedback_label.config(text="請先作答再送出", fg="#A14A2A")
             return
 
-        is_correct = user_answer == correct_answer
+        if mode == "reading_input":
+            normalized_user_answer = self.normalize_exam_reading(user_answer)
+            accepted_answers = self.build_exam_reading_answers(correct_answer)
+            is_correct = normalized_user_answer in accepted_answers
+        else:
+            is_correct = user_answer == correct_answer
+
         self.exam_total += 1
         if is_correct:
             self.exam_score += 1
@@ -1135,12 +1692,12 @@ class DictionaryHome:
         word = str(self.exam_current_question.get("單字", "")).strip()
         reading = str(self.exam_current_question.get("讀音", "")).strip()
         chinese = str(self.exam_current_question.get("中文", "")).strip()
-        english = str(self.exam_current_question.get("英文", "")).strip()
+        english = self.sanitize_english_text(self.exam_current_question.get("英文", ""))
         tags = ", ".join(self.get_normalized_tags(self.exam_current_question))
 
         return (
             f"正解：{word}\n"
-            f"讀音：{reading or '未填寫'}\n"
+            f"讀音：{self.format_reading_with_romaji(reading)}\n"
             f"中文：{chinese or '未填寫'}\n"
             f"英文：{english or '未填寫'}\n"
             f"分類：{tags}"
@@ -1194,7 +1751,10 @@ class DictionaryHome:
                     "詞性": str(item.get("詞性", "")).strip(),
                     "分類": item.get("分類", []) if isinstance(item.get("分類", []), list) else [],
                     "例句": item.get("例句", []) if isinstance(item.get("例句", []), list) else [],
-                    "用法": str(item.get("用法", "")).strip()
+                    "用法": str(item.get("用法", "")).strip(),
+                    "補充": str(item.get("補充", "")).strip(),
+                    "圖片": str(item.get("圖片", "")).strip(),
+                    "左頁分割": item.get("左頁分割", [0.18, 0.42, 0.40]) if isinstance(item.get("左頁分割", [0.18, 0.42, 0.40]), list) else [0.18, 0.42, 0.40]
                 })
 
             self.dictionary_data = cleaned
@@ -1462,6 +2022,7 @@ class DictionaryHome:
             return
 
         self.collection_original_text.delete("1.0", tk.END)
+        self.collection_note_text.delete("1.0", tk.END)
         self.collection_translation_text.delete("1.0", tk.END)
         self.collection_english_text.delete("1.0", tk.END)
         self.collection_reading_entry.delete(0, tk.END)
@@ -1471,6 +2032,7 @@ class DictionaryHome:
         self.collection_usage_text.delete("1.0", tk.END)
 
         self.collection_original_text.insert("1.0", item.get("單字", ""))
+        self.collection_note_text.insert("1.0", item.get("補充", ""))
         self.collection_translation_text.insert("1.0", item.get("中文", ""))
         self.collection_english_text.insert("1.0", item.get("英文", ""))
         self.collection_reading_entry.insert(0, item.get("讀音", ""))
@@ -1485,12 +2047,15 @@ class DictionaryHome:
             self.collection_example_text.insert("1.0", "\n".join(examples))
 
         self.collection_usage_text.insert("1.0", item.get("用法", ""))
+        self.show_collection_image(item.get("圖片", ""))
+        self.schedule_apply_collection_split(item.get("左頁分割", [0.18, 0.32, 0.50]))
 
     def show_empty_collection_detail(self):
         if not hasattr(self, "collection_original_text"):
             return
 
         self.collection_original_text.delete("1.0", tk.END)
+        self.collection_note_text.delete("1.0", tk.END)
         self.collection_translation_text.delete("1.0", tk.END)
         self.collection_english_text.delete("1.0", tk.END)
         self.collection_reading_entry.delete(0, tk.END)
@@ -1500,8 +2065,11 @@ class DictionaryHome:
         self.collection_usage_text.delete("1.0", tk.END)
 
         self.collection_original_text.insert("1.0", "請先從左邊選一個單字")
+        self.collection_note_text.insert("1.0", "可在這裡記錄補充筆記")
         self.collection_translation_text.insert("1.0", "")
         self.collection_english_text.insert("1.0", "")
+        self.clear_collection_image()
+        self.schedule_apply_collection_split([0.18, 0.32, 0.50])
 
     def save_collection_entry(self):
         if self.current_entry is None:
@@ -1509,6 +2077,7 @@ class DictionaryHome:
             return
 
         original = self.collection_original_text.get("1.0", tk.END).strip()
+        note = self.collection_note_text.get("1.0", tk.END).strip()
         chinese = self.collection_translation_text.get("1.0", tk.END).strip()
         english = self.collection_english_text.get("1.0", tk.END).strip()
         reading = self.collection_reading_entry.get().strip()
@@ -1516,6 +2085,8 @@ class DictionaryHome:
         tag_raw = self.collection_tag_entry.get().strip()
         example_raw = self.collection_example_text.get("1.0", tk.END).strip()
         usage = self.collection_usage_text.get("1.0", tk.END).strip()
+        image_path = self.collection_current_image_path.strip()
+        split_value = self.get_current_collection_split()
 
         if not original:
             messagebox.showwarning("提示", "單字不能空白")
@@ -1544,6 +2115,9 @@ class DictionaryHome:
         data[target_index]["分類"] = tags
         data[target_index]["例句"] = examples
         data[target_index]["用法"] = usage
+        data[target_index]["補充"] = note
+        data[target_index]["圖片"] = image_path
+        data[target_index]["左頁分割"] = split_value
 
         save_dictionary(data)
 

@@ -137,13 +137,38 @@ class ToolbarWindow:
         if self.dictionary_home is not None:
             try:
                 if self.dictionary_home.window.winfo_exists():
+                    self.dictionary_home.refresh_external_context()
                     self.dictionary_home.window.lift()
                     self.dictionary_home.window.focus_force()
                     return
             except Exception:
                 self.dictionary_home = None
 
-        self.dictionary_home = DictionaryHome(self.root)
+        self.dictionary_home = DictionaryHome(self)
+
+    def get_current_translation_context(self):
+        source_text = ""
+        translated_text = ""
+
+        if self.result_popup is not None:
+            try:
+                if self.result_popup.window.winfo_exists():
+                    if hasattr(self.result_popup, "source_textbox"):
+                        source_text = self.result_popup.source_textbox.get("1.0", tk.END).strip()
+                    else:
+                        source_text = str(getattr(self.result_popup, "source_text", "")).strip()
+
+                    if hasattr(self.result_popup, "translated_textbox"):
+                        translated_text = self.result_popup.translated_textbox.get("1.0", tk.END).strip()
+                    else:
+                        translated_text = str(getattr(self.result_popup, "translated_text", "")).strip()
+            except Exception:
+                pass
+
+        return {
+            "source_text": source_text,
+            "translated_text": translated_text
+        }
 
     def open_settings(self):
         print("設定視窗下一步接")

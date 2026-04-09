@@ -106,6 +106,9 @@ def extract_info(entry):
             if isinstance(gloss, list):
                 for g in gloss:
                     if isinstance(g, dict):
+                        gloss_lang = str(g.get("lang", "")).strip().lower()
+                        if gloss_lang and gloss_lang not in {"eng", "en"}:
+                            continue
                         text = str(g.get("text", "")).strip()
                     else:
                         text = str(g).strip()
