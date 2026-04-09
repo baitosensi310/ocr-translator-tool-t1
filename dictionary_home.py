@@ -28,6 +28,8 @@ class DictionaryHome:
         self.collection_image_preview = None
         self.collection_current_image_path = ""
         self.collection_split_apply_job = None
+        self.collection_pages = []
+        self.collection_resize_refresh_job = None
 
         self.collection_search_var = tk.StringVar()
         self.collection_tag_var = tk.StringVar(value="全部")
@@ -830,6 +832,7 @@ class DictionaryHome:
             selectmode="browse"
         )
         self.collection_tree.pack(fill=tk.BOTH, expand=True)
+        self.collection_tree.bind("<Configure>", self.on_collection_tree_resized)
 
         tree_scrollbar.config(command=self.collection_tree.yview)
 
@@ -1878,14 +1881,101 @@ class DictionaryHome:
         self.filtered_dictionary_data = list(self.collection_flat_items)
 
     def get_collection_total_pages(self):
-        if not self.collection_flat_items:
+        if not self.collection_pages:
             return 1
-        return (len(self.collection_flat_items) - 1) // self.collection_page_size + 1
+        return len(self.collection_pages)
 
     def get_collection_page_data(self):
-        start = (self.collection_page - 1) * self.collection_page_size
-        end = start + self.collection_page_size
-        return self.collection_flat_items[start:end]
+        if not self.collection_pages:
+            return [], None
+
+        page_index = max(0, min(self.collection_page - 1, len(self.collection_pages) - 1))
+        page_info = self.collection_pages[page_index]
+        return page_info["items"], page_info["previous_tag"]
+
+    def get_collection_item_tag(self, item):
+        normalized_tags = self.get_normalized_tags(item)
+        return normalized_tags[0] if normalized_tags else "未分類"
+
+    def get_collection_row_budget(self):
+        if not hasattr(self, "collection_tree"):
+            return self.collection_page_size
+
+        tree_height = self.collection_tree.winfo_height()
+        try:
+            row_height = int(ttk.Style().lookup("Treeview", "rowheight") or 20)
+        except Exception:
+            row_height = 20
+
+        if row_height <= 0:
+            row_height = 20
+
+        if tree_height <= 1:
+            return max(self.collection_page_size, 18)
+
+        visible_rows = max(8, (tree_height - 8) // row_height)
+        return visible_rows
+
+    def build_collection_pages(self):
+        row_budget = self.get_collection_row_budget()
+        selected_tag = self.collection_tag_var.get().strip()
+
+        if not self.collection_flat_items:
+            self.collection_pages = []
+            return
+
+        pages = []
+        current_items = []
+        current_rows = 0
+        previous_tag_global = None
+        page_previous_tag = None
+
+        for item in self.collection_flat_items:
+            item_tag = "未分類" if selected_tag == "未分類" else self.get_collection_item_tag(item)
+            header_needed = previous_tag_global != item_tag
+            needed_rows = 1 + (1 if header_needed else 0)
+
+            if current_items and current_rows + needed_rows > row_budget:
+                pages.append({
+                    "items": current_items,
+                    "previous_tag": page_previous_tag
+                })
+                current_items = []
+                current_rows = 0
+                page_previous_tag = previous_tag_global
+
+            if not current_items:
+                page_previous_tag = previous_tag_global
+
+            current_items.append(item)
+            current_rows += needed_rows
+            previous_tag_global = item_tag
+
+        if current_items:
+            pages.append({
+                "items": current_items,
+                "previous_tag": page_previous_tag
+            })
+
+        self.collection_pages = pages
+
+    def on_collection_tree_resized(self, event=None):
+        if not hasattr(self, "collection_tree"):
+            return
+
+        new_budget = self.get_collection_row_budget()
+        if new_budget == self.collection_page_size:
+            return
+
+        self.collection_page_size = new_budget
+
+        if self.collection_resize_refresh_job is not None:
+            try:
+                self.window.after_cancel(self.collection_resize_refresh_job)
+            except Exception:
+                pass
+
+        self.collection_resize_refresh_job = self.window.after(80, self.refresh_collection_list)
 
     def on_collection_search_changed(self, event=None):
         self.collection_page = 1
@@ -1902,7 +1992,7 @@ class DictionaryHome:
             self.collection_page += 1
             self.refresh_collection_list()
 
-    def build_collection_tree(self, page_data):
+    def build_collection_tree(self, page_data, previous_tag=None):
         if not hasattr(self, "collection_tree"):
             return
 
@@ -1911,12 +2001,14 @@ class DictionaryHome:
 
         selected_tag = self.collection_tag_var.get().strip()
         if selected_tag == "未分類":
-            unclassified_node = self.collection_tree.insert(
-                "",
-                "end",
-                text="未分類",
-                open=True
-            )
+            unclassified_node = ""
+            if previous_tag != "未分類":
+                unclassified_node = self.collection_tree.insert(
+                    "",
+                    "end",
+                    text="未分類",
+                    open=True
+                )
 
             for item in page_data:
                 word = str(item.get("單字", "")).strip()
@@ -1944,16 +2036,18 @@ class DictionaryHome:
         category_nodes = {}
 
         for item in page_data:
-            normalized_tags = self.get_normalized_tags(item)
-            first_tag = normalized_tags[0] if normalized_tags else "未分類"
+            first_tag = self.get_collection_item_tag(item)
 
             if first_tag not in category_nodes:
-                category_nodes[first_tag] = self.collection_tree.insert(
-                    "",
-                    "end",
-                    text=first_tag,
-                    open=True
-                )
+                if previous_tag == first_tag and not category_nodes:
+                    category_nodes[first_tag] = ""
+                else:
+                    category_nodes[first_tag] = self.collection_tree.insert(
+                        "",
+                        "end",
+                        text=first_tag,
+                        open=True
+                    )
 
             parent_category_id = category_nodes[first_tag]
 
@@ -1984,18 +2078,19 @@ class DictionaryHome:
         self.load_dictionary_data()
         self.refresh_collection_tag_menu()
         self.apply_collection_filters()
+        self.build_collection_pages()
 
         total_pages = self.get_collection_total_pages()
         if self.collection_page > total_pages:
             self.collection_page = total_pages
 
-        page_data = self.get_collection_page_data()
+        page_data, previous_tag = self.get_collection_page_data()
 
         print("dictionary_data =", len(self.dictionary_data))
         print("filtered_dictionary_data =", len(self.filtered_dictionary_data))
         print("page_data =", len(page_data))
 
-        self.build_collection_tree(page_data)
+        self.build_collection_tree(page_data, previous_tag)
 
         self.collection_page_label.config(
             text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
