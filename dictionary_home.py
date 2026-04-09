@@ -1,3 +1,4 @@
+import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 from dictionary_manager import load_dictionary, save_dictionary, delete_word
@@ -10,6 +11,7 @@ class DictionaryHome:
 
         self.dictionary_data = []
         self.filtered_dictionary_data = []
+        self.collection_flat_items = []
         self.current_entry = None
         self.tree_item_to_entry = {}
 
@@ -17,6 +19,13 @@ class DictionaryHome:
         self.collection_tag_var = tk.StringVar(value="全部")
         self.collection_page = 1
         self.collection_page_size = 12
+        self.exam_tag_var = tk.StringVar(value="未分類")
+        self.exam_mode_var = tk.StringVar(value="reading_input")
+        self.exam_candidates = []
+        self.exam_current_question = None
+        self.exam_answer_shown = False
+        self.exam_score = 0
+        self.exam_total = 0
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("字典主頁")
@@ -643,10 +652,11 @@ class DictionaryHome:
         return text_widget
 
     # =========================================================
-    # 3. 考試區（預留）
+    # 3. 考試區
     # =========================================================
     def open_exam_area(self):
         self.clear_page()
+        self.load_dictionary_data()
 
         outer = tk.Frame(self.main_frame, bg="#F5EAD9")
         outer.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
@@ -656,7 +666,7 @@ class DictionaryHome:
 
         title = tk.Label(
             header,
-            text="考試區",
+            text="日文考試",
             font=("Microsoft JhengHei", 22, "bold"),
             bg="#E7D6BE",
             fg="#4A2F21",
@@ -664,28 +674,264 @@ class DictionaryHome:
         )
         title.pack()
 
-        body = tk.Frame(outer, bg="#EADCC8", bd=0)
+        subtitle = tk.Label(
+            header,
+            text="依照目前字典分類出題，適合用來快速練讀音與字義辨識",
+            font=("Microsoft JhengHei", 11),
+            bg="#E7D6BE",
+            fg="#6A4A35",
+            pady=4
+        )
+        subtitle.pack()
+
+        body = tk.Frame(outer, bg="#F5EAD9")
         body.pack(fill=tk.BOTH, expand=True)
 
-        info = tk.Label(
-            body,
-            text=(
-                "這裡先保留給未來的測驗系統。\n\n"
-                "之後可以考慮放：\n"
-                "• 看原文選翻譯\n"
-                "• 看翻譯回想原文\n"
-                "• 聽讀音選單字\n"
-                "• 分類 tag 測驗\n"
-                "• 錯題重練\n"
-                "• 分頁或章節測驗"
-            ),
-            font=("Microsoft JhengHei", 13),
+        left_panel = tk.Frame(body, bg="#EADCC8", bd=0, width=320)
+        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 12))
+        left_panel.pack_propagate(False)
+
+        right_panel = tk.Frame(body, bg="#EADCC8", bd=0)
+        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        control_title = tk.Label(
+            left_panel,
+            text="出題設定",
+            font=("Microsoft JhengHei", 15, "bold"),
             bg="#EADCC8",
             fg="#4A2F21",
-            justify="left",
-            pady=40
+            pady=12
         )
-        info.pack()
+        control_title.pack(fill=tk.X)
+
+        tag_label = tk.Label(
+            left_panel,
+            text="分類",
+            font=("Microsoft JhengHei", 11, "bold"),
+            bg="#EADCC8",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        tag_label.pack(fill=tk.X, padx=14, pady=(8, 6))
+
+        exam_tag_options = self.get_exam_tag_options()
+        if self.exam_tag_var.get() not in exam_tag_options:
+            self.exam_tag_var.set(exam_tag_options[0])
+
+        self.exam_tag_menu = tk.OptionMenu(
+            left_panel,
+            self.exam_tag_var,
+            *exam_tag_options,
+            command=lambda _value: self.on_exam_filter_changed()
+        )
+        self.exam_tag_menu.config(
+            font=("Microsoft JhengHei", 10),
+            bg="#8B5E3C",
+            fg="#FFF8EE",
+            activebackground="#A06A43",
+            activeforeground="#FFF8EE",
+            relief="flat",
+            bd=0,
+            highlightthickness=0
+        )
+        self.exam_tag_menu["menu"].config(
+            font=("Microsoft JhengHei", 10),
+            bg="#FBF6EE",
+            fg="#3A2A1F"
+        )
+        self.exam_tag_menu.pack(fill=tk.X, padx=14)
+
+        mode_label = tk.Label(
+            left_panel,
+            text="題型",
+            font=("Microsoft JhengHei", 11, "bold"),
+            bg="#EADCC8",
+            fg="#4A2F21",
+            anchor="w"
+        )
+        mode_label.pack(fill=tk.X, padx=14, pady=(14, 6))
+
+        mode_frame = tk.Frame(left_panel, bg="#EADCC8")
+        mode_frame.pack(fill=tk.X, padx=14)
+
+        reading_radio = tk.Radiobutton(
+            mode_frame,
+            text="看單字輸入讀音",
+            variable=self.exam_mode_var,
+            value="reading_input",
+            command=self.on_exam_filter_changed,
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#3A2A1F",
+            selectcolor="#FBF6EE",
+            activebackground="#EADCC8",
+            anchor="w",
+            justify="left"
+        )
+        reading_radio.pack(fill=tk.X, pady=(0, 6))
+
+        meaning_radio = tk.Radiobutton(
+            mode_frame,
+            text="看中文選單字",
+            variable=self.exam_mode_var,
+            value="meaning_choice",
+            command=self.on_exam_filter_changed,
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#3A2A1F",
+            selectcolor="#FBF6EE",
+            activebackground="#EADCC8",
+            anchor="w",
+            justify="left"
+        )
+        meaning_radio.pack(fill=tk.X)
+
+        self.exam_pool_label = tk.Label(
+            left_panel,
+            text="可出題數：0",
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#6A4A35",
+            anchor="w",
+            justify="left"
+        )
+        self.exam_pool_label.pack(fill=tk.X, padx=14, pady=(18, 4))
+
+        self.exam_score_label = tk.Label(
+            left_panel,
+            text="作答進度：0 / 0",
+            font=("Microsoft JhengHei", 10),
+            bg="#EADCC8",
+            fg="#6A4A35",
+            anchor="w"
+        )
+        self.exam_score_label.pack(fill=tk.X, padx=14, pady=(0, 12))
+
+        left_button_row = tk.Frame(left_panel, bg="#EADCC8")
+        left_button_row.pack(fill=tk.X, padx=14, pady=(4, 0))
+
+        new_question_btn = self.create_soft_button(left_button_row, "下一題", self.next_exam_question, width=10)
+        new_question_btn.pack(side=tk.LEFT)
+
+        reset_score_btn = self.create_soft_button(left_button_row, "重置成績", self.reset_exam_score, width=10)
+        reset_score_btn.pack(side=tk.RIGHT)
+
+        quiz_title = tk.Label(
+            right_panel,
+            text="題目區",
+            font=("Microsoft JhengHei", 15, "bold"),
+            bg="#EADCC8",
+            fg="#4A2F21",
+            pady=12
+        )
+        quiz_title.pack(fill=tk.X)
+
+        quiz_card = tk.Frame(right_panel, bg="#FBF6EE", bd=0)
+        quiz_card.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 14))
+
+        self.exam_question_type_label = tk.Label(
+            quiz_card,
+            text="",
+            font=("Microsoft JhengHei", 11, "bold"),
+            bg="#FBF6EE",
+            fg="#8B5E3C",
+            anchor="w"
+        )
+        self.exam_question_type_label.pack(fill=tk.X, padx=18, pady=(18, 8))
+
+        self.exam_prompt_label = tk.Label(
+            quiz_card,
+            text="",
+            font=("Microsoft JhengHei", 22, "bold"),
+            bg="#FBF6EE",
+            fg="#3A2A1F",
+            wraplength=760,
+            justify="left",
+            anchor="w"
+        )
+        self.exam_prompt_label.pack(fill=tk.X, padx=18, pady=(0, 12))
+
+        self.exam_hint_label = tk.Label(
+            quiz_card,
+            text="",
+            font=("Microsoft JhengHei", 10),
+            bg="#FBF6EE",
+            fg="#7A6555",
+            wraplength=760,
+            justify="left",
+            anchor="w"
+        )
+        self.exam_hint_label.pack(fill=tk.X, padx=18, pady=(0, 12))
+
+        self.exam_answer_entry = tk.Entry(
+            quiz_card,
+            font=("Microsoft JhengHei", 14),
+            bg="#FFFDF8",
+            fg="#2E231B",
+            relief="flat",
+            bd=0
+        )
+        self.exam_answer_entry.pack(fill=tk.X, padx=18, pady=(0, 12), ipady=8)
+        self.exam_answer_entry.bind("<Return>", self.submit_exam_answer)
+
+        self.exam_choice_var = tk.StringVar(value="")
+        self.exam_choice_buttons = []
+        choice_frame = tk.Frame(quiz_card, bg="#FBF6EE")
+        choice_frame.pack(fill=tk.X, padx=18, pady=(0, 12))
+        for _ in range(4):
+            btn = tk.Radiobutton(
+                choice_frame,
+                text="",
+                variable=self.exam_choice_var,
+                value="",
+                font=("Microsoft JhengHei", 11),
+                bg="#FBF6EE",
+                fg="#3A2A1F",
+                selectcolor="#FFF7E8",
+                activebackground="#FBF6EE",
+                anchor="w",
+                justify="left"
+            )
+            btn.pack(fill=tk.X, pady=3)
+            self.exam_choice_buttons.append(btn)
+
+        action_row = tk.Frame(quiz_card, bg="#FBF6EE")
+        action_row.pack(fill=tk.X, padx=18, pady=(2, 10))
+
+        submit_btn = self.create_soft_button(action_row, "送出答案", self.submit_exam_answer, width=10)
+        submit_btn.pack(side=tk.LEFT)
+
+        reveal_btn = self.create_soft_button(action_row, "看答案", self.reveal_exam_answer, width=10)
+        reveal_btn.pack(side=tk.LEFT, padx=10)
+
+        next_btn = self.create_soft_button(action_row, "換一題", self.next_exam_question, width=10)
+        next_btn.pack(side=tk.LEFT)
+
+        self.exam_feedback_label = tk.Label(
+            quiz_card,
+            text="",
+            font=("Microsoft JhengHei", 12, "bold"),
+            bg="#FBF6EE",
+            fg="#8B5E3C",
+            justify="left",
+            anchor="w",
+            wraplength=760
+        )
+        self.exam_feedback_label.pack(fill=tk.X, padx=18, pady=(0, 10))
+
+        self.exam_answer_label = tk.Label(
+            quiz_card,
+            text="",
+            font=("Microsoft JhengHei", 11),
+            bg="#FBF6EE",
+            fg="#4A2F21",
+            justify="left",
+            anchor="w",
+            wraplength=760
+        )
+        self.exam_answer_label.pack(fill=tk.X, padx=18, pady=(0, 18))
+
+        self.on_exam_filter_changed()
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
@@ -695,6 +941,229 @@ class DictionaryHome:
 
         close_btn = self.create_soft_button(bottom, "關閉", self.window.destroy, width=10)
         close_btn.pack(side=tk.RIGHT)
+
+    def get_exam_tag_options(self):
+        tags = set()
+        has_unclassified = False
+
+        for item in self.dictionary_data:
+            if str(item.get("language", "")).strip() != "ja":
+                continue
+
+            normalized_tags = self.get_normalized_tags(item)
+            if normalized_tags == ["未分類"]:
+                has_unclassified = True
+            else:
+                for tag in normalized_tags:
+                    tags.add(tag)
+
+        ordered_tags = []
+        if has_unclassified:
+            ordered_tags.append("未分類")
+
+        ordered_tags.extend(sorted(tags))
+        return ordered_tags or ["未分類"]
+
+    def on_exam_filter_changed(self):
+        self.exam_candidates = self.get_exam_candidates()
+        self.exam_current_question = None
+        self.exam_answer_shown = False
+        self.exam_choice_var.set("")
+
+        self.update_exam_score_label()
+
+        if hasattr(self, "exam_pool_label"):
+            mode_text = "讀音輸入" if self.exam_mode_var.get() == "reading_input" else "中文選字"
+            self.exam_pool_label.config(
+                text=f"可出題數：{len(self.exam_candidates)}\n目前題型：{mode_text}"
+            )
+
+        self.next_exam_question()
+
+    def get_exam_candidates(self):
+        selected_tag = self.exam_tag_var.get().strip()
+        mode = self.exam_mode_var.get().strip()
+        result = []
+
+        for item in self.dictionary_data:
+            if str(item.get("language", "")).strip() != "ja":
+                continue
+
+            normalized_tags = self.get_normalized_tags(item)
+            if selected_tag not in normalized_tags:
+                continue
+
+            word = str(item.get("單字", "")).strip()
+            reading = str(item.get("讀音", "")).strip()
+            chinese = str(item.get("中文", "")).strip()
+
+            if not word:
+                continue
+
+            if mode == "reading_input" and not reading:
+                continue
+
+            if mode == "meaning_choice" and not chinese:
+                continue
+
+            result.append(item)
+
+        return result
+
+    def next_exam_question(self):
+        if not hasattr(self, "exam_prompt_label"):
+            return
+
+        self.exam_feedback_label.config(text="")
+        self.exam_answer_label.config(text="")
+        self.exam_answer_shown = False
+        self.exam_choice_var.set("")
+        self.exam_answer_entry.delete(0, tk.END)
+
+        if not self.exam_candidates:
+            self.exam_current_question = None
+            self.exam_question_type_label.config(text="目前無法出題")
+            self.exam_prompt_label.config(text="這個分類目前沒有可用的日文題目")
+            self.exam_hint_label.config(text="提示：你可以先去單字收藏補上讀音或中文，再回來練習。")
+            self.exam_answer_entry.pack_forget()
+            for btn in self.exam_choice_buttons:
+                btn.pack_forget()
+            return
+
+        mode = self.exam_mode_var.get().strip()
+        item = random.choice(self.exam_candidates)
+        self.exam_current_question = item
+
+        if mode == "reading_input":
+            self.exam_question_type_label.config(text="題型：看單字輸入讀音")
+            self.exam_prompt_label.config(text=item.get("單字", ""))
+            chinese = str(item.get("中文", "")).strip()
+            hint_text = f"中文提示：{chinese}" if chinese else "中文提示：目前沒有中文，可直接憑記憶作答"
+            self.exam_hint_label.config(text=hint_text)
+            for btn in self.exam_choice_buttons:
+                btn.pack_forget()
+            self.exam_answer_entry.pack(fill=tk.X, padx=18, pady=(0, 12), ipady=8)
+            self.exam_answer_entry.focus_set()
+            return
+
+        self.exam_question_type_label.config(text="題型：看中文選單字")
+        self.exam_prompt_label.config(text=str(item.get("中文", "")).strip())
+        reading = str(item.get("讀音", "")).strip()
+        self.exam_hint_label.config(text=f"讀音提示：{reading}" if reading else "讀音提示：無")
+        self.exam_answer_entry.pack_forget()
+
+        options = self.build_exam_choices(item)
+        for btn in self.exam_choice_buttons:
+            btn.pack_forget()
+
+        for btn, option in zip(self.exam_choice_buttons, options):
+            btn.config(text=option, value=option)
+            btn.pack(fill=tk.X, pady=3)
+
+    def build_exam_choices(self, correct_item):
+        correct_word = str(correct_item.get("單字", "")).strip()
+
+        pool = []
+        for item in self.exam_candidates:
+            word = str(item.get("單字", "")).strip()
+            if word and word != correct_word:
+                pool.append(word)
+
+        unique_pool = []
+        seen = set()
+        for word in pool:
+            if word in seen:
+                continue
+            seen.add(word)
+            unique_pool.append(word)
+
+        random.shuffle(unique_pool)
+        options = unique_pool[:3] + [correct_word]
+        random.shuffle(options)
+        return options
+
+    def submit_exam_answer(self, event=None):
+        if not self.exam_current_question:
+            return
+
+        if self.exam_answer_shown:
+            self.next_exam_question()
+            return
+
+        mode = self.exam_mode_var.get().strip()
+        correct_answer = ""
+        user_answer = ""
+
+        if mode == "reading_input":
+            correct_answer = str(self.exam_current_question.get("讀音", "")).strip()
+            user_answer = self.exam_answer_entry.get().strip()
+        else:
+            correct_answer = str(self.exam_current_question.get("單字", "")).strip()
+            user_answer = self.exam_choice_var.get().strip()
+
+        if not user_answer:
+            self.exam_feedback_label.config(text="請先作答再送出", fg="#A14A2A")
+            return
+
+        is_correct = user_answer == correct_answer
+        self.exam_total += 1
+        if is_correct:
+            self.exam_score += 1
+
+        self.update_exam_score_label()
+        self.exam_answer_shown = True
+
+        if is_correct:
+            self.exam_feedback_label.config(text="答對了", fg="#2E7D32")
+        else:
+            self.exam_feedback_label.config(text=f"答錯了，你的答案：{user_answer}", fg="#A14A2A")
+
+        self.exam_answer_label.config(text=self.format_exam_answer_text())
+
+    def reveal_exam_answer(self):
+        if not self.exam_current_question:
+            return
+
+        self.exam_answer_shown = True
+        self.exam_feedback_label.config(text="答案已顯示，這題不計分", fg="#8B5E3C")
+        self.exam_answer_label.config(text=self.format_exam_answer_text())
+
+    def format_exam_answer_text(self):
+        if not self.exam_current_question:
+            return ""
+
+        word = str(self.exam_current_question.get("單字", "")).strip()
+        reading = str(self.exam_current_question.get("讀音", "")).strip()
+        chinese = str(self.exam_current_question.get("中文", "")).strip()
+        english = str(self.exam_current_question.get("英文", "")).strip()
+        tags = ", ".join(self.get_normalized_tags(self.exam_current_question))
+
+        return (
+            f"正解：{word}\n"
+            f"讀音：{reading or '未填寫'}\n"
+            f"中文：{chinese or '未填寫'}\n"
+            f"英文：{english or '未填寫'}\n"
+            f"分類：{tags}"
+        )
+
+    def reset_exam_score(self):
+        self.exam_score = 0
+        self.exam_total = 0
+        self.update_exam_score_label()
+        if hasattr(self, "exam_feedback_label"):
+            self.exam_feedback_label.config(text="成績已重置", fg="#8B5E3C")
+
+    def update_exam_score_label(self):
+        if not hasattr(self, "exam_score_label"):
+            return
+
+        accuracy = 0
+        if self.exam_total:
+            accuracy = round((self.exam_score / self.exam_total) * 100)
+
+        self.exam_score_label.config(
+            text=f"作答進度：{self.exam_score} / {self.exam_total}\n正確率：{accuracy}%"
+        )
 
     # =========================================================
     # 單字收藏資料
@@ -754,25 +1223,30 @@ class DictionaryHome:
         return ["全部"] + sorted(tags)
 
     def get_entry_sort_key(self, item):
-        tags = item.get("分類", [])
-        if not isinstance(tags, list):
-            tags = []
-
-        first_tag = ""
-        for tag in tags:
-            tag_text = str(tag).strip()
-            if tag_text:
-                first_tag = tag_text
-                break
-
-        if not first_tag:
-            first_tag = "未分類"
+        normalized_tags = self.get_normalized_tags(item)
+        first_tag = normalized_tags[0] if normalized_tags else "未分類"
 
         return (
             1 if first_tag == "未分類" else 0,
             first_tag.lower(),
             str(item.get("單字", "")).lower()
         )
+
+    def get_normalized_tags(self, item):
+        tags = item.get("分類", [])
+        if not isinstance(tags, list):
+            tags = []
+
+        normalized_tags = []
+        for tag in tags:
+            tag_text = str(tag).strip()
+            if tag_text:
+                normalized_tags.append(tag_text)
+
+        if not normalized_tags:
+            normalized_tags = ["未分類"]
+
+        return normalized_tags
 
     def refresh_collection_tag_menu(self):
         if not hasattr(self, "collection_tag_menu"):
@@ -803,6 +1277,7 @@ class DictionaryHome:
         selected_language = (self.selected_language or "").strip()
 
         result = []
+        unclassified_items = []
 
         for item in self.dictionary_data:
             language = str(item.get("language", "unknown")).strip()
@@ -810,25 +1285,13 @@ class DictionaryHome:
             chinese = str(item.get("中文", "")).strip()
             reading = str(item.get("讀音", "")).strip()
             english = str(item.get("英文", "")).strip()
-            tags = item.get("分類", [])
-
-            if not isinstance(tags, list):
-                tags = []
 
             # 入口先決定語言
             if selected_language and selected_language != "new":
                 if language != selected_language:
                     continue
 
-            normalized_tags = []
-            if isinstance(tags, list):
-                for tag in tags:
-                    tag_text = str(tag).strip()
-                    if tag_text:
-                        normalized_tags.append(tag_text)
-
-            if not normalized_tags:
-                normalized_tags = ["未分類"]
+            normalized_tags = self.get_normalized_tags(item)
 
             full_text = f"{word} {chinese} {reading} {english} {' '.join(normalized_tags)}".lower()
 
@@ -838,19 +1301,31 @@ class DictionaryHome:
             if selected_tag != "全部" and selected_tag not in normalized_tags:
                 continue
 
-            result.append(item)
+            if normalized_tags == ["未分類"]:
+                unclassified_items.append(item)
+            else:
+                result.append(item)
 
-        self.filtered_dictionary_data = sorted(result, key=self.get_entry_sort_key)
+        sorted_unclassified_items = sorted(unclassified_items, key=self.get_entry_sort_key)
+        sorted_result = sorted(result, key=self.get_entry_sort_key)
+
+        if selected_tag == "未分類":
+            self.collection_flat_items = sorted_unclassified_items
+            self.filtered_dictionary_data = list(self.collection_flat_items)
+            return
+
+        self.collection_flat_items = sorted_result + sorted_unclassified_items
+        self.filtered_dictionary_data = list(self.collection_flat_items)
 
     def get_collection_total_pages(self):
-        if not self.filtered_dictionary_data:
+        if not self.collection_flat_items:
             return 1
-        return (len(self.filtered_dictionary_data) - 1) // self.collection_page_size + 1
+        return (len(self.collection_flat_items) - 1) // self.collection_page_size + 1
 
     def get_collection_page_data(self):
         start = (self.collection_page - 1) * self.collection_page_size
         end = start + self.collection_page_size
-        return self.filtered_dictionary_data[start:end]
+        return self.collection_flat_items[start:end]
 
     def on_collection_search_changed(self, event=None):
         self.collection_page = 1
@@ -874,16 +1349,43 @@ class DictionaryHome:
         self.collection_tree.delete(*self.collection_tree.get_children())
         self.tree_item_to_entry = {}
 
+        selected_tag = self.collection_tag_var.get().strip()
+        if selected_tag == "未分類":
+            unclassified_node = self.collection_tree.insert(
+                "",
+                "end",
+                text="未分類",
+                open=True
+            )
+
+            for item in page_data:
+                word = str(item.get("單字", "")).strip()
+                reading = str(item.get("讀音", "")).strip()
+                chinese = str(item.get("中文", "")).strip()
+
+                if reading:
+                    display_text = f"{word} ({reading})"
+                elif chinese:
+                    display_text = f"{word} - {chinese}"
+                else:
+                    display_text = word
+
+                item_id = self.collection_tree.insert(
+                    unclassified_node,
+                    "end",
+                    text=display_text,
+                    open=False
+                )
+
+                self.tree_item_to_entry[item_id] = item
+
+            return
+
         category_nodes = {}
 
         for item in page_data:
-            tags = item.get("分類", [])
-            if not isinstance(tags, list) or not tags:
-                tags = ["未分類"]
-
-            first_tag = str(tags[0]).strip() if tags else "未分類"
-            if not first_tag:
-                first_tag = "未分類"
+            normalized_tags = self.get_normalized_tags(item)
+            first_tag = normalized_tags[0] if normalized_tags else "未分類"
 
             if first_tag not in category_nodes:
                 category_nodes[first_tag] = self.collection_tree.insert(

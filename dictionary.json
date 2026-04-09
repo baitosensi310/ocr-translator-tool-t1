@@ -78,7 +78,9 @@
     "中文": "沙烏地阿拉伯",
     "英文": "Saudi Arabia",
     "詞性": "n",
-    "分類": [],
+    "分類": [
+      "國家"
+    ],
     "例句": [],
     "用法": "",
     "加入時間": "2026-04-08 17:41:29"
@@ -276,5 +278,77 @@
     "例句": [],
     "用法": "",
     "加入時間": "2026-04-08 19:44:53"
+  },
+  {
+    "language": "ja",
+    "單字": "店員",
+    "讀音": "てんいん / ていいん",
+    "中文": "職員",
+    "英文": "employee (of a store); shop assistant; clerk; salesperson; winkelbediende; winkelassistent; bediende; personeel in een winkel; verkoper; winkeljongen; winkelknecht; winkelheer; {pej.} winkelpik; winkelpersoneel; winkelassistente; verkoopster; winkeldame; winkeljuffrouw; winkeljuffer; winkelmeisje; employé de magasin; vendeur; Verkäufer; Verkaufskraft; Ladenangestellter; Kommis; dolgozó; tisztviselő; adminisztrátor; áruházi elárusító; egyházi személy; felszentelt pap; hivatalnok; írástudó; írnok; irodai alkalmazott; kántor; kereskedősegéd; könyvelő; lelkész; tudós ember; ügyintéző; ügyvédbojtár; ügyvédjelölt; üzleti elárusító; продавец, приказчик; клерк; приёмщик [заказов]; prodajalec; uslužbenec; trgovski pomočnik; dependiente; vendedor de una tienda; empleado",
+    "詞性": "n",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 14:39:30"
+  },
+  {
+    "language": "ja",
+    "單字": "投票",
+    "讀音": "とうひょう",
+    "中文": "投票",
+    "英文": "voting; ballot; poll; vote; stemmen; voteren; zijn stem uitbrengen; stemming; stemuitbrenging; stemronde; ballotage; stem; votum; scrutin; élection; abstimmen; wählen; seine Stimme geben; sein Votum geben; stimmen; Abstimmung; Wahl; Wahlgang; Stimmabgabe; szavazatszámlálás; szavazóhelyiség; választói névjegyzék; голосование; баллотировка; подача голосов; {…に～する} голосовать (отдавать свой голос) за (против) (кого-л.); glasovanje; glas; glasovnica; volilni glas; glasovati; voliti; voto",
+    "詞性": "n, vs, vi",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 14:39:43"
+  },
+  {
+    "language": "ja",
+    "單字": "経済",
+    "讀音": "けいざい",
+    "中文": "經濟",
+    "英文": "economy; economics; finance; (one's) finances; financial circumstances; being economical; thrift; economie; staathuishoudkunde; de economische toestand; financiën; zuinigheid; spaarzaamheid; besparing; het besparen; uitsparing; het uitsparen; économie; affaires; sciences économiques; Wirtschaft; Ökonomie; wirtschaftliche Lage; (urspr. Bed.)Verwaltung der Welt und Errettung des Volkes vor Leid; Finanzen; Sparsamkeit; Wirtschaftlichkeit; cég; pénzügy; 1) экономика; народное хозяйство; {～[の]}, {～[的]} экономический, [народно]хозяйственный; финансовый; 2) экономичность; экономия; {～的} экономный; экономичный; {～である}, {～になる} быть экономным; gospodarstvo; ekonomija; economía; negocios; finanzas",
+    "詞性": "n",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 14:40:48"
+  },
+  {
+    "language": "ja",
+    "單字": "受賞",
+    "讀音": "じゅしょう",
+    "中文": "獎",
+    "英文": "winning a prize; receiving an award; being awarded; een prijs winnen; behalen; met een prijs onderscheiden worden; einen Preis empfangen; einen Preis verliehen bekommen; mit einem Preis ausgezeichnet werden; mit einem Preis gekrönt werden; Entgegennahme eines Preises; Preisempfang; megnyerés; nyerés; получение премии (приза (и т. п.)); {～する} получать премию (приз, награду); prejeti nagrado; prejetje nagrade; biti nagrajen; recibir un premio; ser premiado; premiado",
+    "詞性": "n, vs, vt, vi",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 14:49:22"
+  },
+  {
+    "language": "ja",
+    "單字": "憲法改正",
+    "讀音": "けんぽうかいせい",
+    "中文": "憲法修正案",
+    "英文": "constitutional reform; constitutional amendment; Verfassungsreform; Verfassungsrevision; Verfassungsänderung",
+    "詞性": "n",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 18:15:06"
+  },
+  {
+    "language": "ja",
+    "單字": "審査会",
+    "讀音": "",
+    "中文": "考試委員會",
+    "英文": "",
+    "詞性": "",
+    "分類": [],
+    "例句": [],
+    "用法": "",
+    "加入時間": "2026-04-09 18:15:17"
   }
 ]

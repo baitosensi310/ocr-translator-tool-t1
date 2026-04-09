@@ -239,18 +239,29 @@ class ResultPopup:
         self.translated_textbox.delete("1.0", tk.END)
         self.translated_textbox.insert("1.0", self.translated_text)
         self.set_status("翻譯完成")
-
+        
     def add_current_to_dict(self):
         try:
-            result = add_word_fast(self.source_text)
+            # 🔥 先抓反白文字
+            try:
+                selected_text = self.source_textbox.get("sel.first", "sel.last").strip()
+            except:
+                selected_text = ""
+
+            # 如果沒有反白 → fallback 用整段
+            word = selected_text if selected_text else self.source_text
+
+            result = add_word_fast(word)
 
             if result.startswith("已加入字典"):
-                enrich_word_data_async(self.source_text)
+                enrich_word_data_async(word)
+
                 messagebox.showinfo(
                     "字典",
-                    f"{result}\n背景正在補完讀音 / 中文 / 英文 / 詞性",
+                    f"{result}\n背景正在補充讀音 / 中文 / 英文 / 詞性",
                     parent=self.window
                 )
+
                 self.set_status("已加入字典，背景補資料中")
             else:
                 messagebox.showinfo("字典", result, parent=self.window)
@@ -259,6 +270,27 @@ class ResultPopup:
         except Exception as e:
             messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
             self.set_status("加入字典失敗")
+
+
+    # def add_current_to_dict(self): 換抓部分文字
+    #     try:
+    #         result = add_word_fast(self.source_text)
+    #
+    #         if result.startswith("已加入字典"):
+    #             enrich_word_data_async(self.source_text)
+    #             messagebox.showinfo(
+    #                 "字典",
+    #                 f"{result}\n背景正在補完讀音 / 中文 / 英文 / 詞性",
+    #                 parent=self.window
+    #             )
+    #             self.set_status("已加入字典，背景補資料中")
+    #         else:
+    #             messagebox.showinfo("字典", result, parent=self.window)
+    #             self.set_status(f"字典：{result}")
+    #
+    #     except Exception as e:
+    #         messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)
+    #         self.set_status("加入字典失敗")
 
     def copy_source(self):
         text = self.source_textbox.get("1.0", tk.END).strip()
