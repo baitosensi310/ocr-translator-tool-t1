@@ -2,7 +2,6 @@ import json
 import os
 
 JMDICT_PATH = "jmdict.json"
-
 jmdict_data = None
 
 
@@ -23,11 +22,9 @@ def load_jmdict():
         print("讀取 jmdict.json 失敗：", e)
         return []
 
-    # 有些 json 可能外層不是 list
     if isinstance(data, list):
         jmdict_data = data
     elif isinstance(data, dict):
-        # 如果你的 jmdict.json 外層是 dict，常見可能在 words / entries
         if isinstance(data.get("words"), list):
             jmdict_data = data["words"]
         elif isinstance(data.get("entries"), list):
@@ -39,9 +36,11 @@ def load_jmdict():
 
     return jmdict_data
 
+
 def search_word(word):
     data = load_jmdict()
     results = []
+    seen_ids = set()
 
     word = str(word).strip()
     if not word:
@@ -54,19 +53,28 @@ def search_word(word):
         kanji_list = entry.get("kanji", [])
         kana_list = entry.get("kana", [])
 
+        matched = False
+
         if isinstance(kanji_list, list):
             for k in kanji_list:
                 if isinstance(k, dict) and str(k.get("text", "")).strip() == word:
-                    results.append(entry)
-                    return results   # 找到第一筆就先回傳，先不要全掃完
+                    matched = True
+                    break
 
-        if isinstance(kana_list, list):
+        if not matched and isinstance(kana_list, list):
             for k in kana_list:
                 if isinstance(k, dict) and str(k.get("text", "")).strip() == word:
-                    results.append(entry)
-                    return results   # 找到第一筆就先回傳
+                    matched = True
+                    break
+
+        if matched:
+            entry_key = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+            if entry_key not in seen_ids:
+                results.append(entry)
+                seen_ids.add(entry_key)
 
     return results
+
 
 def extract_info(entry):
     if not isinstance(entry, dict):
@@ -76,38 +84,44 @@ def extract_info(entry):
             "詞性": ""
         }
 
-    reading = ""
-    english = ""
-    part_of_speech = ""
+    readings = []
+    english_list = []
+    pos_list = []
 
     kana_list = entry.get("kana", [])
-    if isinstance(kana_list, list) and kana_list:
-        first_kana = kana_list[0]
-        if isinstance(first_kana, dict):
-            reading = first_kana.get("text", "")
+    if isinstance(kana_list, list):
+        for kana in kana_list:
+            if isinstance(kana, dict):
+                text = str(kana.get("text", "")).strip()
+                if text and text not in readings:
+                    readings.append(text)
 
     senses = entry.get("sense", [])
-    if isinstance(senses, list) and senses:
-        first_sense = senses[0]
+    if isinstance(senses, list):
+        for sense in senses:
+            if not isinstance(sense, dict):
+                continue
 
-        if isinstance(first_sense, dict):
-            gloss = first_sense.get("gloss", [])
+            gloss = sense.get("gloss", [])
             if isinstance(gloss, list):
-                english_list = []
                 for g in gloss:
-                    if isinstance(g, dict) and "text" in g:
-                        english_list.append(g["text"])
-                    elif isinstance(g, str):
-                        english_list.append(g)
+                    if isinstance(g, dict):
+                        text = str(g.get("text", "")).strip()
+                    else:
+                        text = str(g).strip()
 
-                english = "; ".join(english_list)
+                    if text and text not in english_list:
+                        english_list.append(text)
 
-            pos = first_sense.get("partOfSpeech", [])
+            pos = sense.get("partOfSpeech", [])
             if isinstance(pos, list):
-                part_of_speech = ", ".join([str(x) for x in pos])
+                for p in pos:
+                    text = str(p).strip()
+                    if text and text not in pos_list:
+                        pos_list.append(text)
 
     return {
-        "讀音": reading,
-        "英文": english,
-        "詞性": part_of_speech
+        "讀音": " / ".join(readings),
+        "英文": "; ".join(english_list),
+        "詞性": ", ".join(pos_list)
     }

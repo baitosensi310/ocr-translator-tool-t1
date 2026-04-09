@@ -242,31 +242,19 @@ class ResultPopup:
 
     def add_current_to_dict(self):
         try:
-            try:
-                selected_text = self.source_textbox.selection_get().strip()
-            except Exception:
-                selected_text = ""
+            result = add_word_fast(self.source_text)
 
-            if not selected_text:
-                messagebox.showwarning(
-                    "提示",
-                    "請先在原文區反白你要加入的單字，再按加入字典",
+            if result.startswith("已加入字典"):
+                enrich_word_data_async(self.source_text)
+                messagebox.showinfo(
+                    "字典",
+                    f"{result}\n背景正在補完讀音 / 中文 / 英文 / 詞性",
                     parent=self.window
                 )
-                return
-
-            result = add_word_fast(selected_text)
-
-            if result == "NEED_LANGUAGE_CHOICE":
-                self.ask_dictionary_language(selected_text)
-                return
-
-            # 先立即告知成功
-            messagebox.showinfo("字典", result, parent=self.window)
-            self.set_status(f"字典：{result}")
-
-            # 再背景補資料
-            enrich_word_data_async(selected_text)
+                self.set_status("已加入字典，背景補資料中")
+            else:
+                messagebox.showinfo("字典", result, parent=self.window)
+                self.set_status(f"字典：{result}")
 
         except Exception as e:
             messagebox.showerror("錯誤", f"加入字典失敗：{e}", parent=self.window)

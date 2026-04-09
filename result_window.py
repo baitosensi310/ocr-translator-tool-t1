@@ -557,7 +557,21 @@ class ResultWindow:
                 self.root.clipboard_clear()
                 self.root.clipboard_append(selected_text)
                 self.root.update()
-                self.set_status("已複製原文選取內容")
+
+                result = None
+                try:
+                    result = add_word(selected_text)
+                except Exception:
+                    result = None
+
+                if result and result.startswith("已加入字典"):
+                    self.set_status("已複製原文選取內容，已加入字典")
+                elif result == "已存在":
+                    self.set_status("已複製原文選取內容，字典中已存在")
+                elif result == "這段內容看起來像句子，請先反白單字再加入":
+                    self.set_status("已複製原文選取內容（句子未加入字典）")
+                else:
+                    self.set_status("已複製原文選取內容")
         except:
             messagebox.showwarning("提示", "請先在原文區選取文字")
 

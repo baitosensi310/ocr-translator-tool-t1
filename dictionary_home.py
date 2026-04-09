@@ -736,16 +736,43 @@ class DictionaryHome:
 
     def get_all_tags(self):
         tags = set()
+        has_unclassified = False
 
         for item in self.dictionary_data:
             item_tags = item.get("分類", [])
-            if isinstance(item_tags, list):
+            if isinstance(item_tags, list) and item_tags:
                 for tag in item_tags:
                     tag_text = str(tag).strip()
                     if tag_text:
                         tags.add(tag_text)
+            else:
+                has_unclassified = True
+
+        if has_unclassified:
+            tags.add("未分類")
 
         return ["全部"] + sorted(tags)
+
+    def get_entry_sort_key(self, item):
+        tags = item.get("分類", [])
+        if not isinstance(tags, list):
+            tags = []
+
+        first_tag = ""
+        for tag in tags:
+            tag_text = str(tag).strip()
+            if tag_text:
+                first_tag = tag_text
+                break
+
+        if not first_tag:
+            first_tag = "未分類"
+
+        return (
+            1 if first_tag == "未分類" else 0,
+            first_tag.lower(),
+            str(item.get("單字", "")).lower()
+        )
 
     def refresh_collection_tag_menu(self):
         if not hasattr(self, "collection_tag_menu"):
@@ -793,17 +820,27 @@ class DictionaryHome:
                 if language != selected_language:
                     continue
 
-            full_text = f"{word} {chinese} {reading} {english} {' '.join(tags)}".lower()
+            normalized_tags = []
+            if isinstance(tags, list):
+                for tag in tags:
+                    tag_text = str(tag).strip()
+                    if tag_text:
+                        normalized_tags.append(tag_text)
+
+            if not normalized_tags:
+                normalized_tags = ["未分類"]
+
+            full_text = f"{word} {chinese} {reading} {english} {' '.join(normalized_tags)}".lower()
 
             if keyword and keyword not in full_text:
                 continue
 
-            if selected_tag != "全部" and selected_tag not in tags:
+            if selected_tag != "全部" and selected_tag not in normalized_tags:
                 continue
 
             result.append(item)
 
-        self.filtered_dictionary_data = result
+        self.filtered_dictionary_data = sorted(result, key=self.get_entry_sort_key)
 
     def get_collection_total_pages(self):
         if not self.filtered_dictionary_data:
