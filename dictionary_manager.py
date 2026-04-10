@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import os
 import re
+import threading
 from datetime import datetime
 
 from language_detector import detect_language, is_ambiguous_cjk
@@ -9,6 +10,11 @@ from translator import translate_local
 from jmdict_loader import search_word, extract_info
 
 FILE_PATH = "dictionary.json"
+enrich_pending_words = []
+enrich_pending_set = set()
+enrich_process = None
+enrich_active_word = ""
+enrich_lock = threading.Lock()
 
 
 def normalize_text(value):
@@ -224,7 +230,7 @@ def get_first_jmdict_info(word):
     }
 
 
-def find_jmdict_compound_info(word):
+def find_jmdict_compound_info(word, include_translation=True):
     word = normalize_japanese_lookup_text(word)
     if len(word) < 2:
         return None
@@ -269,12 +275,12 @@ def find_jmdict_compound_info(word):
     return {
         "讀音": "".join(readings),
         "英文": " + ".join(english_list),
-        "中文": translate_to_chinese(word),
+        "中文": translate_to_chinese(word) if include_translation else "",
         "詞性": " , ".join(pos_list)
     }
 
 
-def find_jmdict_info(word):
+def find_jmdict_info(word, include_translation=True):
     try:
         results = search_word(word)
         lookup_word = normalize_japanese_lookup_text(word)
@@ -282,7 +288,7 @@ def find_jmdict_info(word):
             results = search_word(lookup_word)
 
         if not results:
-            return find_jmdict_compound_info(word)
+            return find_jmdict_compound_info(word, include_translation=include_translation)
 
         readings = []
         english_list = []
@@ -310,12 +316,14 @@ def find_jmdict_info(word):
             if p and p not in pos_list:
                 pos_list.append(p)
 
-        # 中文先用日文翻
-        chinese_text = translate_to_chinese(word)
+        chinese_text = ""
+        if include_translation:
+            # 中文先用日文翻
+            chinese_text = translate_to_chinese(word)
 
-        # 如果翻不到，用英文翻
-        if not chinese_text and english_list:
-            chinese_text = translate_to_chinese(english_list[0])
+            # 如果翻不到，用英文翻
+            if not chinese_text and english_list:
+                chinese_text = translate_to_chinese(english_list[0])
 
         return {
             "讀音": " / ".join(readings),
@@ -512,13 +520,99 @@ def enrich_word_data(word):
         if not item.get("中文", ""):
             item["中文"] = translate_to_chinese(word)
 
-    save_dictionary(data)
+    latest_data = load_dictionary()
+    latest_target_index = None
+
+    for i, latest_item in enumerate(latest_data):
+        same_word = latest_item.get("單字", "") == word
+        same_language = latest_item.get("language", "unknown") == language
+        if same_word and same_language:
+            latest_target_index = i
+            break
+
+    if latest_target_index is None:
+        for i, latest_item in enumerate(latest_data):
+            if latest_item.get("單字", "") == word:
+                latest_target_index = i
+                break
+
+    if latest_target_index is None:
+        return "找不到單字"
+
+    latest_item = latest_data[latest_target_index]
+    for field in ["讀音", "中文", "英文", "詞性"]:
+        if not latest_item.get(field, "") and item.get(field, ""):
+            latest_item[field] = item.get(field, "")
+
+    save_dictionary(latest_data)
     return "已補完資料"
 
-def enrich_word_data_async(word):
+def run_enrich_word_data_worker(word):
+    try:
+        enrich_word_data(word)
+    except Exception as e:
+        print("背景補資料失敗：", e)
+
+
+def start_next_enrich_worker_locked():
+    global enrich_process
+    global enrich_active_word
+
+    if enrich_process is not None and enrich_process.is_alive():
+        return
+
+    if not enrich_pending_words:
+        enrich_process = None
+        enrich_active_word = ""
+        return
+
+    word = enrich_pending_words.pop(0)
+    enrich_pending_set.discard(word)
+    enrich_active_word = word
+
     process = multiprocessing.Process(
-        target=enrich_word_data,
+        target=run_enrich_word_data_worker,
         args=(word,),
         daemon=True
     )
+    enrich_process = process
     process.start()
+
+    watcher = threading.Thread(
+        target=watch_enrich_worker,
+        args=(process, word),
+        daemon=True
+    )
+    watcher.start()
+
+
+def watch_enrich_worker(process, word):
+    try:
+        process.join()
+    except Exception:
+        pass
+
+    with enrich_lock:
+        global enrich_process
+        global enrich_active_word
+
+        if enrich_process is process:
+            enrich_process = None
+        if enrich_active_word == word:
+            enrich_active_word = ""
+
+        start_next_enrich_worker_locked()
+
+
+def enrich_word_data_async(word):
+    word = normalize_text(word)
+    if not word:
+        return
+
+    with enrich_lock:
+        if word == enrich_active_word or word in enrich_pending_set:
+            return
+
+        enrich_pending_words.append(word)
+        enrich_pending_set.add(word)
+        start_next_enrich_worker_locked()

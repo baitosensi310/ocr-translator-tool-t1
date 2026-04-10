@@ -53,6 +53,7 @@ class DictionaryHome:
         self.exam_mode_var = tk.StringVar(value="reading_input")
         self.exam_candidates = []
         self.exam_current_question = None
+        self.exam_recent_question_keys = []
         self.exam_answer_shown = False
         self.exam_score = 0
         self.exam_total = 0
@@ -75,7 +76,6 @@ class DictionaryHome:
     def clear_page(self):
         if hasattr(self, "stop_collection_image_animation"):
             self.stop_collection_image_animation()
-
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
@@ -260,11 +260,33 @@ class DictionaryHome:
                 answers.add(normalized_hiragana)
 
             romaji = self.kana_to_romaji(reading)
-            normalized_romaji = self.normalize_exam_reading(romaji)
-            if normalized_romaji:
-                answers.add(normalized_romaji)
+            answers.update(self.build_exam_romaji_variants(romaji))
 
         return answers
+
+    def build_exam_romaji_variants(self, romaji):
+        normalized = self.normalize_exam_reading(romaji)
+        if not normalized:
+            return set()
+
+        variants = {normalized}
+        replacement_groups = [
+            ("fu", "hu"),
+            ("shi", "si"),
+            ("chi", "ti"),
+            ("tsu", "tu"),
+            ("ji", "zi"),
+        ]
+
+        for left, right in replacement_groups:
+            current_variants = list(variants)
+            for value in current_variants:
+                if left in value:
+                    variants.add(value.replace(left, right))
+                if right in value:
+                    variants.add(value.replace(right, left))
+
+        return variants
 
     def sanitize_english_text(self, text, limit=4):
         raw = str(text).strip()
@@ -322,6 +344,9 @@ class DictionaryHome:
         return mapping.get(code, "字典")
 
     def build_index_page_callback(self):
+        if not self.confirm_collection_unsaved_change():
+            return
+
         language_name = self.get_language_name(self.selected_language)
         self.build_index_page(language_name)
 
@@ -341,8 +366,10 @@ class DictionaryHome:
             if answer is None:
                 return
             if answer:
-                self.save_collection_entry(show_message=False, refresh_list=False)
+                if not self.save_collection_entry(show_message=False, refresh_list=False):
+                    return
 
+        self.cancel_collection_enrich_refresh()
         self.window.destroy()
 
     def get_external_translation_context(self):
@@ -446,7 +473,7 @@ class DictionaryHome:
                     f"{result}\n背景正在補充讀音 / 中文 / 英文 / 詞性",
                     parent=self.window
                 )
-                self.window.after(50, lambda word=selected_text: enrich_word_data_async(word))
+                self.window.after(500, lambda word=selected_text: enrich_word_data_async(word))
             else:
                 messagebox.showinfo("字典", result, parent=self.window)
         except Exception as e:
@@ -1025,7 +1052,7 @@ class DictionaryHome:
         image_clear_btn = self.create_soft_button(
             image_header,
             "清除圖片",
-            lambda: self.clear_collection_image(auto_save=True),
+            self.clear_collection_image,
             width=8
         )
         image_clear_btn.pack(side=tk.RIGHT, padx=(0, 8))
@@ -1078,6 +1105,9 @@ class DictionaryHome:
 
         back_btn = self.create_footer_button(left_actions, "返回索引", self.build_index_page_callback, primary=True)
         back_btn.pack(side=tk.LEFT)
+
+        save_btn = self.create_footer_button(bottom, "儲存內容", self.save_collection_entry)
+        save_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
         close_btn = self.create_footer_button(bottom, "關閉", self.close_dictionary_window)
         close_btn.pack(side=tk.RIGHT)
@@ -1150,13 +1180,11 @@ class DictionaryHome:
 
         for widget in entry_widgets:
             widget.bind("<KeyRelease>", self.schedule_collection_autosave)
-            widget.bind("<Return>", self.save_collection_entry_from_event)
-            widget.bind("<FocusOut>", self.save_collection_entry_from_event)
+            widget.bind("<Return>", self.mark_collection_entry_dirty_from_event)
 
         for widget in text_widgets:
             widget.bind("<KeyRelease>", self.schedule_collection_autosave)
             widget.bind("<Return>", self.schedule_collection_autosave_after_text_return)
-            widget.bind("<FocusOut>", self.save_collection_entry_from_event)
 
     def schedule_collection_autosave_after_text_return(self, event=None):
         self.window.after_idle(lambda: self.schedule_collection_autosave(delay=50))
@@ -1166,11 +1194,6 @@ class DictionaryHome:
             return
 
         self.collection_has_unsaved_changes = True
-        self.cancel_collection_autosave()
-
-        self.collection_autosave_job = self.window.after(
-            delay, lambda: self.save_collection_entry(show_message=False, refresh_list=True)
-        )
 
     def cancel_collection_autosave(self):
         if self.collection_autosave_job is not None:
@@ -1188,14 +1211,11 @@ class DictionaryHome:
                 pass
             self.collection_enrich_refresh_job = None
 
-    def save_collection_entry_from_event(self, event=None):
+    def mark_collection_entry_dirty_from_event(self, event=None):
         if self.collection_detail_loading or self.current_entry is None:
             return
 
-        self.cancel_collection_autosave()
-
         self.collection_has_unsaved_changes = True
-        self.save_collection_entry(show_message=False, refresh_list=True)
 
     def normalize_collection_split(self, value):
         default = [0.18, 0.32, 0.50]
@@ -1286,7 +1306,6 @@ class DictionaryHome:
         self.show_collection_image(image_path)
         self.collection_image_path_var.set("")
         self.collection_has_unsaved_changes = True
-        self.save_collection_entry(show_message=False, refresh_list=True)
 
     def store_collection_image(self, source_path):
         source_path = str(source_path).strip()
@@ -1311,7 +1330,7 @@ class DictionaryHome:
 
         return os.path.relpath(target_path, os.getcwd())
 
-    def clear_collection_image(self, auto_save=False):
+    def clear_collection_image(self):
         self.stop_collection_image_animation()
         self.collection_current_image_path = ""
         self.collection_image_preview = None
@@ -1320,9 +1339,8 @@ class DictionaryHome:
         self.collection_image_path_var.set("")
         if hasattr(self, "collection_image_preview_label"):
             self.collection_image_preview_label.config(image="", text="尚未放入圖片")
-        if auto_save:
+        if not self.collection_detail_loading and self.current_entry is not None:
             self.collection_has_unsaved_changes = True
-            self.save_collection_entry(show_message=False, refresh_list=True)
 
     def stop_collection_image_animation(self):
         if self.collection_image_animation_job is not None:
@@ -1431,6 +1449,7 @@ class DictionaryHome:
         self.load_dictionary_data()
         self.exam_candidates = []
         self.exam_current_question = None
+        self.exam_recent_question_keys = []
         self.exam_answer_shown = False
         self.exam_score = 0
         self.exam_total = 0
@@ -1761,6 +1780,7 @@ class DictionaryHome:
     def on_exam_filter_changed(self):
         self.exam_candidates = self.get_exam_candidates()
         self.exam_current_question = None
+        self.exam_recent_question_keys = []
         self.exam_answer_shown = False
         self.exam_choice_var.set("")
 
@@ -1829,8 +1849,9 @@ class DictionaryHome:
             return
 
         mode = self.exam_mode_var.get().strip()
-        item = random.choice(self.exam_candidates)
+        item = self.choose_next_exam_question()
         self.exam_current_question = item
+        self.remember_exam_question(item)
 
         if mode == "reading_input":
             self.exam_question_type_label.config(text="題型：看單字輸入讀音")
@@ -1863,6 +1884,31 @@ class DictionaryHome:
             btn.pack(fill=tk.X, pady=3)
 
         self.set_exam_choice("")
+
+    def choose_next_exam_question(self):
+        if len(self.exam_candidates) <= 1:
+            return self.exam_candidates[0]
+
+        available_items = [
+            item for item in self.exam_candidates
+            if self.get_collection_entry_key(item) not in self.exam_recent_question_keys
+        ]
+
+        if not available_items:
+            self.exam_recent_question_keys = []
+            available_items = list(self.exam_candidates)
+
+        return random.choice(available_items)
+
+    def remember_exam_question(self, item):
+        key = self.get_collection_entry_key(item)
+        if not key[0]:
+            return
+
+        self.exam_recent_question_keys.append(key)
+        max_recent_count = max(1, min(5, len(self.exam_candidates) - 1))
+        if len(self.exam_recent_question_keys) > max_recent_count:
+            self.exam_recent_question_keys = self.exam_recent_question_keys[-max_recent_count:]
 
     def build_exam_choices(self, correct_item):
         correct_word = str(correct_item.get("單字", "")).strip()
@@ -2401,9 +2447,6 @@ class DictionaryHome:
         if not hasattr(self, "collection_tree"):
             return
 
-        if self.current_entry is not None and not self.collection_detail_loading:
-            self.save_collection_entry(show_message=False, refresh_list=False)
-
         selection = self.collection_tree.selection()
         if not selection:
             return
@@ -2412,8 +2455,50 @@ class DictionaryHome:
         if not selected_id:
             return
 
-        self.current_entry = self.tree_item_to_entry[selected_id]
+        selected_entry = self.tree_item_to_entry[selected_id]
+        if (
+            self.current_entry is not None
+            and self.get_collection_entry_key(selected_entry) == self.get_collection_entry_key(self.current_entry)
+        ):
+            return
+
+        if not self.confirm_collection_unsaved_change():
+            self.restore_current_collection_tree_selection()
+            return
+
+        self.current_entry = selected_entry
         self.show_collection_detail(self.current_entry)
+
+    def confirm_collection_unsaved_change(self):
+        if not self.collection_has_unsaved_changes or self.current_entry is None:
+            return True
+
+        answer = messagebox.askyesnocancel(
+            "尚未保存",
+            "目前單字內容尚未保存，要先保存再切換嗎？",
+            parent=self.window
+        )
+        if answer is None:
+            return False
+        if answer:
+            return self.save_collection_entry(show_message=False, refresh_list=False)
+
+        self.collection_has_unsaved_changes = False
+        return True
+
+    def restore_current_collection_tree_selection(self):
+        if self.current_entry is None or not hasattr(self, "collection_tree"):
+            return
+
+        current_key = self.get_collection_entry_key(self.current_entry)
+        for item_id, item in self.tree_item_to_entry.items():
+            if self.get_collection_entry_key(item) != current_key:
+                continue
+
+            self.collection_tree.selection_set(item_id)
+            self.collection_tree.focus(item_id)
+            self.collection_tree.see(item_id)
+            break
 
     def get_first_selected_collection_entry_id(self, selection=None):
         if selection is None:
@@ -2553,6 +2638,7 @@ class DictionaryHome:
         self.show_collection_image(item.get("圖片", ""))
         self.schedule_apply_collection_split(item.get("左頁分割", [0.18, 0.32, 0.50]))
         self.collection_detail_loading = False
+        self.collection_has_unsaved_changes = False
         self.schedule_collection_enrichment_if_needed(item)
 
     def show_empty_collection_detail(self):
@@ -2580,6 +2666,7 @@ class DictionaryHome:
         self.clear_collection_image()
         self.schedule_apply_collection_split([0.18, 0.32, 0.50])
         self.collection_detail_loading = False
+        self.collection_has_unsaved_changes = False
 
     def collection_entry_needs_enrichment(self, item):
         if str(item.get("language", "")).strip() != "ja":
@@ -2648,7 +2735,7 @@ class DictionaryHome:
         if self.current_entry is None:
             if show_message:
                 messagebox.showwarning("提示", "請先從左邊選一個單字")
-            return
+            return False
 
         self.cancel_collection_autosave()
 
@@ -2667,7 +2754,7 @@ class DictionaryHome:
         if not original:
             if show_message:
                 messagebox.showwarning("提示", "單字不能空白")
-            return
+            return False
 
         tags = self.split_collection_tag_text(tag_raw)
         examples = [x.strip() for x in example_raw.splitlines() if x.strip()]
@@ -2683,7 +2770,7 @@ class DictionaryHome:
         if target_index is None:
             if show_message:
                 messagebox.showerror("錯誤", "找不到要儲存的單字")
-            return
+            return False
 
         data[target_index]["單字"] = original
         data[target_index]["中文"] = chinese
@@ -2705,6 +2792,7 @@ class DictionaryHome:
             self.refresh_collection_list_select_entry(self.current_entry)
         if show_message:
             messagebox.showinfo("成功", "已儲存單字內容")
+        return True
 
     def reload_collection_area(self):
         self.collection_search_var.set("")
