@@ -1,4 +1,5 @@
 import tkinter as tk
+import ctypes
 import pyperclip
 from PIL import ImageGrab
 
@@ -27,9 +28,11 @@ class ToolbarWindow:
         self.dictionary_home = None
         self.result_popup = None
         self.clipboard_monitor_enabled = True
+        self.clipboard_error_count = 0
+        self.last_clipboard_sequence = self.get_clipboard_sequence()
 
         try:
-            self.last_clipboard_text = pyperclip.paste()
+            self.last_clipboard_text = self.read_clipboard_text()
         except Exception:
             self.last_clipboard_text = ""
 
@@ -120,20 +123,47 @@ class ToolbarWindow:
         self.result_popup = ResultPopup(self.root, source_text)
         self.result_popup.show()
 
-    def monitor_clipboard(self):
+    def read_clipboard_text(self):
         try:
-            if self.clipboard_monitor_enabled:
-                text = pyperclip.paste()
-
-                if text.strip() and text != self.last_clipboard_text:
-                    self.last_clipboard_text = text
-                    self.open_result_popup(text)
+            return pyperclip.paste()
         except Exception:
             pass
+
+        try:
+            return self.root.clipboard_get()
+        except Exception:
+            return ""
+
+    def get_clipboard_sequence(self):
+        try:
+            return ctypes.windll.user32.GetClipboardSequenceNumber()
+        except Exception:
+            return 0
+
+    def monitor_clipboard(self):
+        if self.clipboard_monitor_enabled:
+            text = self.read_clipboard_text()
+            sequence = self.get_clipboard_sequence()
+
+            if text:
+                self.clipboard_error_count = 0
+                clipboard_changed = (
+                    text != self.last_clipboard_text
+                    or (sequence and sequence != self.last_clipboard_sequence)
+                )
+
+                if text.strip() and clipboard_changed:
+                    self.last_clipboard_text = text
+                    self.last_clipboard_sequence = sequence
+                    self.open_result_popup(text)
+            else:
+                self.clipboard_error_count += 1
 
         self.root.after(400, self.monitor_clipboard)
 
     def open_dictionary(self):
+        self.sync_clipboard_before_dictionary()
+
         if self.dictionary_home is not None:
             try:
                 if self.dictionary_home.window.winfo_exists():
@@ -145,6 +175,12 @@ class ToolbarWindow:
                 self.dictionary_home = None
 
         self.dictionary_home = DictionaryHome(self)
+
+    def sync_clipboard_before_dictionary(self):
+        text = self.read_clipboard_text()
+        if text.strip():
+            self.last_clipboard_text = text
+            self.last_clipboard_sequence = self.get_clipboard_sequence()
 
     def get_current_translation_context(self):
         source_text = ""
