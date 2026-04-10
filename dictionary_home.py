@@ -421,12 +421,12 @@ class DictionaryHome:
         try:
             result = add_word_fast(selected_text)
             if result.startswith("已加入字典"):
-                enrich_word_data_async(selected_text)
                 messagebox.showinfo(
                     "字典",
                     f"{result}\n背景正在補充讀音 / 中文 / 英文 / 詞性",
                     parent=self.window
                 )
+                self.window.after(50, lambda word=selected_text: enrich_word_data_async(word))
             else:
                 messagebox.showinfo("字典", result, parent=self.window)
         except Exception as e:
@@ -1333,6 +1333,11 @@ class DictionaryHome:
     def open_exam_area(self):
         self.clear_page()
         self.load_dictionary_data()
+        self.exam_candidates = []
+        self.exam_current_question = None
+        self.exam_answer_shown = False
+        self.exam_score = 0
+        self.exam_total = 0
 
         outer = tk.Frame(self.main_frame, bg="#F5EAD9")
         outer.pack(fill=tk.BOTH, expand=True, padx=24, pady=24)
@@ -1342,7 +1347,7 @@ class DictionaryHome:
 
         title = tk.Label(
             header,
-            text="日文考試",
+            text=f"{self.get_language_name(self.selected_language)}考試",
             font=("Microsoft JhengHei", 22, "bold"),
             bg="#E7D6BE",
             fg="#4A2F21",
@@ -1352,7 +1357,7 @@ class DictionaryHome:
 
         subtitle = tk.Label(
             header,
-            text="依照目前字典分類出題，適合用來快速練讀音與字義辨識",
+            text="依照目前字典分類出題",
             font=("Microsoft JhengHei", 11),
             bg="#E7D6BE",
             fg="#6A4A35",
@@ -1628,12 +1633,19 @@ class DictionaryHome:
         close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
         close_btn.pack(side=tk.RIGHT)
 
+    def get_exam_language(self):
+        selected_language = (self.selected_language or "").strip()
+        if selected_language and selected_language != "new":
+            return selected_language
+        return ""
+
     def get_exam_tag_options(self):
         tags = set()
         has_unclassified = False
+        exam_language = self.get_exam_language()
 
         for item in self.dictionary_data:
-            if str(item.get("language", "")).strip() != "ja":
+            if exam_language and str(item.get("language", "")).strip() != exam_language:
                 continue
 
             normalized_tags = self.get_normalized_tags(item)
@@ -1669,10 +1681,11 @@ class DictionaryHome:
     def get_exam_candidates(self):
         selected_tag = self.exam_tag_var.get().strip()
         mode = self.exam_mode_var.get().strip()
+        exam_language = self.get_exam_language()
         result = []
 
         for item in self.dictionary_data:
-            if str(item.get("language", "")).strip() != "ja":
+            if exam_language and str(item.get("language", "")).strip() != exam_language:
                 continue
 
             normalized_tags = self.get_normalized_tags(item)
@@ -1712,7 +1725,7 @@ class DictionaryHome:
         if not self.exam_candidates:
             self.exam_current_question = None
             self.exam_question_type_label.config(text="目前無法出題")
-            self.exam_prompt_label.config(text="這個分類目前沒有可用的日文題目")
+            self.exam_prompt_label.config(text="這個分類目前沒有可用的題目")
             self.exam_hint_label.config(text="提示：你可以先去單字收藏補上讀音或中文，再回來練習。")
             self.exam_answer_entry.pack_forget()
             for btn in self.exam_choice_buttons:

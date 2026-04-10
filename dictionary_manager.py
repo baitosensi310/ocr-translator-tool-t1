@@ -1,8 +1,8 @@
 import json
+import multiprocessing
 import os
 import re
 from datetime import datetime
-import threading
 
 from language_detector import detect_language, is_ambiguous_cjk
 from translator import translate_local
@@ -437,9 +437,9 @@ def enrich_word_data(word):
     return "已補完資料"
 
 def enrich_word_data_async(word):
-    thread = threading.Thread(
+    process = multiprocessing.Process(
         target=enrich_word_data,
         args=(word,),
         daemon=True
     )
-    thread.start()
+    process.start()

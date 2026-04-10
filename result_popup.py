@@ -254,8 +254,6 @@ class ResultPopup:
             result = add_word_fast(word)
 
             if result.startswith("已加入字典"):
-                enrich_word_data_async(word)
-
                 messagebox.showinfo(
                     "字典",
                     f"{result}\n背景正在補充讀音 / 中文 / 英文 / 詞性",
@@ -263,6 +261,7 @@ class ResultPopup:
                 )
 
                 self.set_status("已加入字典，背景補資料中")
+                self.window.after(50, lambda word=word: enrich_word_data_async(word))
             else:
                 messagebox.showinfo("字典", result, parent=self.window)
                 self.set_status(f"字典：{result}")
@@ -386,4 +385,5 @@ def add_word_with_language(self, selected_text, language, dialog):
     messagebox.showinfo("字典", result, parent=self.window)
     self.set_status(f"字典：{result}")
 
-    enrich_word_data_async(selected_text)
+    if result.startswith("已加入字典"):
+        self.window.after(50, lambda: enrich_word_data_async(selected_text))
