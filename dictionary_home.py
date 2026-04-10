@@ -1,10 +1,15 @@
 import random
 import re
+import hashlib
+import os
+import shutil
+import threading
 import tkinter as tk
 import pyperclip
 from tkinter import filedialog
 from tkinter import messagebox, ttk
-from PIL import Image, ImageTk
+from PIL import Image, ImageSequence, ImageTk
+from translator import translate
 from dictionary_manager import (
     add_word_fast,
     delete_word,
@@ -26,7 +31,12 @@ class DictionaryHome:
         self.current_entry = None
         self.tree_item_to_entry = {}
         self.collection_image_preview = None
+        self.collection_image_frames = []
+        self.collection_image_animation_job = None
+        self.collection_image_frame_index = 0
+        self.collection_image_cache = {}
         self.collection_current_image_path = ""
+        self.collection_image_path_var = tk.StringVar()
         self.collection_split_apply_job = None
         self.collection_pages = []
         self.collection_resize_refresh_job = None
@@ -58,6 +68,9 @@ class DictionaryHome:
     # 共用
     # =========================================================
     def clear_page(self):
+        if hasattr(self, "stop_collection_image_animation"):
+            self.stop_collection_image_animation()
+
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
@@ -91,6 +104,10 @@ class DictionaryHome:
             width=14 if primary else 12,
             big=True
         )
+
+    def open_toolbar_settings(self):
+        if hasattr(self.parent, "open_settings"):
+            self.parent.open_settings()
 
     def is_katakana_only(self, text):
         text = str(text).strip()
@@ -351,7 +368,43 @@ class DictionaryHome:
         self.translation_result_text.delete("1.0", tk.END)
 
         self.translation_source_text.insert("1.0", source_text or "目前沒有可顯示的原文")
-        self.translation_result_text.insert("1.0", translated_text or "目前沒有可顯示的翻譯")
+        if translated_text:
+            self.translation_result_text.insert("1.0", translated_text)
+        elif source_text:
+            self.translation_result_text.insert("1.0", "翻譯中，請稍候...")
+            self.translate_area_text_async(source_text)
+        else:
+            self.translation_result_text.insert("1.0", "目前沒有可顯示的翻譯")
+
+    def translate_area_text_async(self, source_text):
+        source_text = str(source_text).strip()
+        if not source_text:
+            return
+
+        self.translation_area_job_source = source_text
+        thread = threading.Thread(
+            target=self.translate_area_text_worker,
+            args=(source_text,),
+            daemon=True
+        )
+        thread.start()
+
+    def translate_area_text_worker(self, source_text):
+        try:
+            result = translate(source_text, "local")
+        except Exception as e:
+            result = f"翻譯失敗：{e}"
+
+        self.window.after(0, lambda: self.apply_translation_area_result(source_text, result))
+
+    def apply_translation_area_result(self, source_text, result):
+        if not hasattr(self, "translation_result_text"):
+            return
+        if getattr(self, "translation_area_job_source", "") != source_text:
+            return
+
+        self.translation_result_text.delete("1.0", tk.END)
+        self.translation_result_text.insert("1.0", result or "翻譯結果為空")
 
     def get_selected_text_from_widget(self, widget):
         try:
@@ -546,7 +599,7 @@ class DictionaryHome:
 
         options = [
             ("1. 翻譯區", "只顯示原文與翻譯，可作為輕量閱讀區", self.open_translation_area),
-            ("2. 單字收藏", "像一本字典一樣翻閱收藏內容", self.open_collection_area),
+            ("2. 單字收藏", "整理收藏內容", self.open_collection_area),
             ("3. 考試區", "之後用來測驗自己，目前先保留架構", self.open_exam_area),
         ]
 
@@ -617,22 +670,17 @@ class DictionaryHome:
         )
         title.pack()
 
-        content = tk.PanedWindow(
-            outer,
-            orient=tk.HORIZONTAL,
-            bg="#F5EAD9",
-            sashwidth=10,
-            sashrelief="flat",
-            bd=0,
-            highlightthickness=0
-        )
+        content = tk.Frame(outer, bg="#F5EAD9")
         content.pack(fill=tk.BOTH, expand=True)
+        content.grid_columnconfigure(0, weight=1, uniform="translation")
+        content.grid_columnconfigure(1, weight=1, uniform="translation")
+        content.grid_rowconfigure(0, weight=1)
 
         left_panel = tk.Frame(content, bg="#EADCC8", bd=0)
         right_panel = tk.Frame(content, bg="#EADCC8", bd=0)
 
-        content.add(left_panel, minsize=260)
-        content.add(right_panel, minsize=260)
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        right_panel.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
 
         left_title = tk.Label(
             left_panel,
@@ -716,8 +764,6 @@ class DictionaryHome:
             self.translation_source_text.insert("1.0", "目前沒有可顯示的原文")
             self.translation_result_text.insert("1.0", f"翻譯區載入失敗：{e}")
 
-        outer.after(120, lambda: content.sash_place(0, 520, 0))
-
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(14, 0))
 
@@ -743,6 +789,9 @@ class DictionaryHome:
         outer = tk.Frame(self.main_frame, bg="#F5EAD9")
         outer.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
+        settings_btn = self.create_soft_button(outer, "設定", self.open_toolbar_settings, width=6)
+        settings_btn.place(x=0, y=0)
+
         header = tk.Frame(outer, bg="#E7D6BE")
         header.pack(fill=tk.X, pady=(0, 18))
 
@@ -755,16 +804,6 @@ class DictionaryHome:
             pady=18
         )
         title.pack()
-
-        subtitle = tk.Label(
-            header,
-            text="像一本字典一樣翻閱你收藏的單字",
-            font=("Microsoft JhengHei", 11),
-            bg="#E7D6BE",
-            fg="#6A4A35",
-            pady=4
-        )
-        subtitle.pack()
 
         body = tk.Frame(outer, bg="#F5EAD9")
         body.pack(fill=tk.BOTH, expand=True, pady=(0, 16))
@@ -872,7 +911,7 @@ class DictionaryHome:
 
         left_page_title = tk.Label(
             left_page,
-            text="左頁",
+            text="內容",
             font=("Microsoft JhengHei", 15, "bold"),
             bg="#FBF6EE",
             fg="#4A2F21",
@@ -957,15 +996,16 @@ class DictionaryHome:
         image_clear_btn = self.create_soft_button(image_header, "清除圖片", self.clear_collection_image, width=8)
         image_clear_btn.pack(side=tk.RIGHT, padx=(0, 8))
 
-        self.collection_image_info_label = tk.Label(
+        self.collection_image_info_entry = tk.Entry(
             image_section,
-            text="可放入圖片或 GIF，會跟著這個單字一起保存",
+            textvariable=self.collection_image_path_var,
             font=("Microsoft JhengHei", 10),
             bg="#FBF6EE",
             fg="#6A4A35",
-            anchor="w"
+            relief="flat",
+            bd=0
         )
-        self.collection_image_info_label.pack(fill=tk.X, pady=(6, 8))
+        self.collection_image_info_entry.pack(fill=tk.X, pady=(6, 8), ipady=5)
 
         self.collection_image_preview_label = tk.Label(
             image_section,
@@ -979,7 +1019,7 @@ class DictionaryHome:
 
         right_page_title = tk.Label(
             right_page,
-            text="右頁",
+            text="詳解",
             font=("Microsoft JhengHei", 15, "bold"),
             bg="#FBF6EE",
             fg="#4A2F21",
@@ -1156,16 +1196,80 @@ class DictionaryHome:
         if not path:
             return
 
-        self.collection_current_image_path = path
-        self.show_collection_image(path)
+        image_path = self.store_collection_image(path)
+        self.collection_current_image_path = image_path
+        self.show_collection_image(image_path)
+        self.collection_image_path_var.set("")
+
+    def store_collection_image(self, source_path):
+        source_path = str(source_path).strip()
+        if not source_path:
+            return ""
+
+        image_dir = os.path.join(os.getcwd(), "dictionary_images")
+        os.makedirs(image_dir, exist_ok=True)
+
+        _, ext = os.path.splitext(source_path)
+        ext = ext.lower() or ".png"
+        try:
+            with open(source_path, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()[:16]
+        except Exception:
+            return source_path
+
+        filename = f"{digest}{ext}"
+        target_path = os.path.join(image_dir, filename)
+        if not os.path.exists(target_path):
+            shutil.copy2(source_path, target_path)
+
+        return os.path.relpath(target_path, os.getcwd())
 
     def clear_collection_image(self):
+        self.stop_collection_image_animation()
         self.collection_current_image_path = ""
         self.collection_image_preview = None
+        self.collection_image_frames = []
+        self.collection_image_frame_index = 0
+        self.collection_image_path_var.set("")
         if hasattr(self, "collection_image_preview_label"):
             self.collection_image_preview_label.config(image="", text="尚未放入圖片")
-        if hasattr(self, "collection_image_info_label"):
-            self.collection_image_info_label.config(text="可放入圖片或 GIF，會跟著這個單字一起保存")
+
+    def stop_collection_image_animation(self):
+        if self.collection_image_animation_job is not None:
+            try:
+                self.window.after_cancel(self.collection_image_animation_job)
+            except Exception:
+                pass
+            self.collection_image_animation_job = None
+
+    def play_collection_gif_frame(self, delay):
+        if not self.collection_image_frames:
+            return
+
+        self.collection_image_preview = self.collection_image_frames[self.collection_image_frame_index]
+        self.collection_image_preview_label.config(image=self.collection_image_preview, text="")
+        self.collection_image_frame_index = (
+            self.collection_image_frame_index + 1
+        ) % len(self.collection_image_frames)
+        self.collection_image_animation_job = self.window.after(
+            max(delay, 30), lambda: self.play_collection_gif_frame(delay)
+        )
+
+    def resolve_collection_image_path(self, path):
+        path = str(path).strip()
+        if not path:
+            return ""
+        if os.path.isabs(path):
+            return path
+        return os.path.abspath(path)
+
+    def get_collection_image_cache_key(self, path):
+        resolved_path = self.resolve_collection_image_path(path)
+        try:
+            modified_at = os.path.getmtime(resolved_path)
+        except Exception:
+            modified_at = 0
+        return (resolved_path, modified_at)
 
     def show_collection_image(self, path):
         path = str(path).strip()
@@ -1173,17 +1277,54 @@ class DictionaryHome:
             self.clear_collection_image()
             return
 
+        self.stop_collection_image_animation()
+        self.collection_image_frames = []
+        self.collection_image_frame_index = 0
+
         try:
-            image = Image.open(path)
-            image.thumbnail((420, 260))
-            self.collection_image_preview = ImageTk.PhotoImage(image)
-            self.collection_image_preview_label.config(image=self.collection_image_preview, text="")
-            self.collection_image_info_label.config(text=path)
+            cache_key = self.get_collection_image_cache_key(path)
+            cached = self.collection_image_cache.get(cache_key)
+            if cached is None:
+                image = Image.open(cache_key[0])
+                if getattr(image, "is_animated", False):
+                    delay = int(image.info.get("duration", 100) or 100)
+                    frames = []
+                    for frame in ImageSequence.Iterator(image):
+                        preview = frame.convert("RGBA")
+                        preview.thumbnail((420, 260))
+                        frames.append(ImageTk.PhotoImage(preview))
+
+                    if not frames:
+                        raise ValueError("empty gif")
+
+                    cached = {
+                        "type": "gif",
+                        "delay": delay,
+                        "frames": frames
+                    }
+                else:
+                    image.thumbnail((420, 260))
+                    cached = {
+                        "type": "image",
+                        "photo": ImageTk.PhotoImage(image)
+                    }
+                self.collection_image_cache[cache_key] = cached
+
+            if cached["type"] == "gif":
+                self.collection_image_frames = cached["frames"]
+                self.collection_image_path_var.set("")
+                self.play_collection_gif_frame(cached["delay"])
+            else:
+                self.collection_image_preview = cached["photo"]
+                self.collection_image_preview_label.config(image=self.collection_image_preview, text="")
+                self.collection_image_path_var.set("")
+
             self.collection_current_image_path = path
         except Exception:
             self.collection_image_preview = None
+            self.collection_image_frames = []
             self.collection_image_preview_label.config(image="", text="圖片載入失敗")
-            self.collection_image_info_label.config(text=path)
+            self.collection_image_path_var.set("圖片載入失敗，請確認路徑")
 
 
     # =========================================================
@@ -1801,15 +1942,28 @@ class DictionaryHome:
             tags = []
 
         normalized_tags = []
+        seen_tags = set()
         for tag in tags:
-            tag_text = str(tag).strip()
-            if tag_text:
-                normalized_tags.append(tag_text)
+            for tag_text in re.split(r"[,，]", str(tag)):
+                tag_text = tag_text.strip()
+                if tag_text and tag_text not in seen_tags:
+                    normalized_tags.append(tag_text)
+                    seen_tags.add(tag_text)
 
         if not normalized_tags:
             normalized_tags = ["未分類"]
 
         return normalized_tags
+
+    def split_collection_tag_text(self, tag_raw):
+        tags = []
+        seen_tags = set()
+        for tag in re.split(r"[,，]", str(tag_raw)):
+            tag_text = tag.strip()
+            if tag_text and tag_text not in seen_tags:
+                tags.append(tag_text)
+                seen_tags.add(tag_text)
+        return tags
 
     def refresh_collection_tag_menu(self):
         if not hasattr(self, "collection_tag_menu"):
@@ -1877,7 +2031,19 @@ class DictionaryHome:
             self.filtered_dictionary_data = list(self.collection_flat_items)
             return
 
-        self.collection_flat_items = sorted_result + sorted_unclassified_items
+        if selected_tag == "全部":
+            expanded_result = []
+            for item in sorted_result:
+                for tag in self.get_normalized_tags(item):
+                    if tag == "未分類":
+                        continue
+                    display_item = dict(item)
+                    display_item["_display_tag"] = tag
+                    expanded_result.append(display_item)
+            self.collection_flat_items = expanded_result + sorted_unclassified_items
+        else:
+            self.collection_flat_items = sorted_result + sorted_unclassified_items
+
         self.filtered_dictionary_data = list(self.collection_flat_items)
 
     def get_collection_total_pages(self):
@@ -1896,6 +2062,15 @@ class DictionaryHome:
     def get_collection_item_tag(self, item):
         normalized_tags = self.get_normalized_tags(item)
         return normalized_tags[0] if normalized_tags else "未分類"
+
+    def get_collection_display_tag(self, item, selected_tag="全部"):
+        if isinstance(item, dict) and "_display_tag" in item:
+            return str(item.get("_display_tag", "")).strip() or "未分類"
+
+        if selected_tag and selected_tag != "全部":
+            return selected_tag
+
+        return self.get_collection_item_tag(item)
 
     def get_collection_row_budget(self):
         if not hasattr(self, "collection_tree"):
@@ -1931,7 +2106,7 @@ class DictionaryHome:
         page_previous_tag = None
 
         for item in self.collection_flat_items:
-            item_tag = "未分類" if selected_tag == "未分類" else self.get_collection_item_tag(item)
+            item_tag = self.get_collection_display_tag(item, selected_tag)
             header_needed = previous_tag_global != item_tag
             needed_rows = 1 + (1 if header_needed else 0)
 
@@ -2036,7 +2211,7 @@ class DictionaryHome:
         category_nodes = {}
 
         for item in page_data:
-            first_tag = self.get_collection_item_tag(item)
+            first_tag = self.get_collection_display_tag(item, selected_tag)
 
             if first_tag not in category_nodes:
                 if previous_tag == first_tag and not category_nodes:
@@ -2135,7 +2310,7 @@ class DictionaryHome:
 
         tags = item.get("分類", [])
         if isinstance(tags, list):
-            self.collection_tag_entry.insert(0, ", ".join(tags))
+            self.collection_tag_entry.insert(0, ", ".join(self.get_normalized_tags(item)))
 
         examples = item.get("例句", [])
         if isinstance(examples, list):
@@ -2187,7 +2362,7 @@ class DictionaryHome:
             messagebox.showwarning("提示", "單字不能空白")
             return
 
-        tags = [x.strip() for x in tag_raw.split(",") if x.strip()]
+        tags = self.split_collection_tag_text(tag_raw)
         examples = [x.strip() for x in example_raw.splitlines() if x.strip()]
 
         data = load_dictionary()

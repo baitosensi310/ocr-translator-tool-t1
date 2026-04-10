@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime
 import threading
 
@@ -22,10 +23,11 @@ def normalize_tag_list(value):
     seen = set()
 
     for item in value:
-        text = normalize_text(item)
-        if text and text not in seen:
-            result.append(text)
-            seen.add(text)
+        for text in re.split(r"[,，]", normalize_text(item)):
+            text = normalize_text(text)
+            if text and text not in seen:
+                result.append(text)
+                seen.add(text)
 
     return result
 
