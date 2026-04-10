@@ -198,12 +198,91 @@ def translate_to_chinese(text):
         print("translate_to_chinese 失敗：", e)
         return ""
 
+JAPANESE_LOOKUP_TRANSLATION = str.maketrans({
+    "國": "国",
+    "際": "際",
+})
+
+
+def normalize_japanese_lookup_text(text):
+    return normalize_text(text).translate(JAPANESE_LOOKUP_TRANSLATION)
+
+
+def get_first_jmdict_info(word):
+    results = search_word(word)
+    if not results:
+        return None
+
+    info = extract_info(results[0])
+    if not isinstance(info, dict):
+        return None
+
+    return {
+        "讀音": normalize_text(info.get("讀音", "")),
+        "英文": normalize_text(info.get("英文", "")),
+        "詞性": normalize_text(info.get("詞性", ""))
+    }
+
+
+def find_jmdict_compound_info(word):
+    word = normalize_japanese_lookup_text(word)
+    if len(word) < 2:
+        return None
+
+    parts = []
+    position = 0
+
+    while position < len(word):
+        matched = None
+
+        for end in range(len(word), position, -1):
+            part = word[position:end]
+            info = get_first_jmdict_info(part)
+            if info and info.get("讀音"):
+                matched = {
+                    "word": part,
+                    "info": info
+                }
+                break
+
+        if matched is None:
+            return None
+
+        parts.append(matched)
+        position += len(matched["word"])
+
+    if len(parts) <= 1:
+        return None
+
+    readings = [part["info"].get("讀音", "") for part in parts if part["info"].get("讀音", "")]
+    english_list = [part["info"].get("英文", "") for part in parts if part["info"].get("英文", "")]
+    pos_list = []
+
+    for part in parts:
+        pos = part["info"].get("詞性", "")
+        if pos and pos not in pos_list:
+            pos_list.append(pos)
+
+    if not readings:
+        return None
+
+    return {
+        "讀音": "".join(readings),
+        "英文": " + ".join(english_list),
+        "中文": translate_to_chinese(word),
+        "詞性": " , ".join(pos_list)
+    }
+
 
 def find_jmdict_info(word):
     try:
         results = search_word(word)
+        lookup_word = normalize_japanese_lookup_text(word)
+        if not results and lookup_word != word:
+            results = search_word(lookup_word)
+
         if not results:
-            return None
+            return find_jmdict_compound_info(word)
 
         readings = []
         english_list = []

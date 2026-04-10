@@ -40,6 +40,7 @@ class DictionaryHome:
         self.collection_detail_loading = False
         self.collection_has_unsaved_changes = False
         self.collection_split_apply_job = None
+        self.collection_enrich_refresh_job = None
         self.collection_pages = []
         self.collection_resize_refresh_job = None
 
@@ -1168,6 +1169,14 @@ class DictionaryHome:
             except Exception:
                 pass
             self.collection_autosave_job = None
+
+    def cancel_collection_enrich_refresh(self):
+        if self.collection_enrich_refresh_job is not None:
+            try:
+                self.window.after_cancel(self.collection_enrich_refresh_job)
+            except Exception:
+                pass
+            self.collection_enrich_refresh_job = None
 
     def save_collection_entry_from_event(self, event=None):
         if self.collection_detail_loading or self.current_entry is None:
@@ -2501,6 +2510,7 @@ class DictionaryHome:
         if not hasattr(self, "collection_original_text"):
             return
 
+        self.cancel_collection_enrich_refresh()
         self.cancel_collection_autosave()
         self.collection_detail_loading = True
 
@@ -2533,11 +2543,13 @@ class DictionaryHome:
         self.show_collection_image(item.get("圖片", ""))
         self.schedule_apply_collection_split(item.get("左頁分割", [0.18, 0.32, 0.50]))
         self.collection_detail_loading = False
+        self.schedule_collection_enrichment_if_needed(item)
 
     def show_empty_collection_detail(self):
         if not hasattr(self, "collection_original_text"):
             return
 
+        self.cancel_collection_enrich_refresh()
         self.cancel_collection_autosave()
         self.collection_detail_loading = True
 
@@ -2558,6 +2570,69 @@ class DictionaryHome:
         self.clear_collection_image()
         self.schedule_apply_collection_split([0.18, 0.32, 0.50])
         self.collection_detail_loading = False
+
+    def collection_entry_needs_enrichment(self, item):
+        if str(item.get("language", "")).strip() != "ja":
+            return False
+
+        return not (
+            str(item.get("讀音", "")).strip()
+            and str(item.get("英文", "")).strip()
+            and str(item.get("詞性", "")).strip()
+        )
+
+    def schedule_collection_enrichment_if_needed(self, item):
+        if self.collection_detail_loading or self.collection_has_unsaved_changes:
+            return
+        if not self.collection_entry_needs_enrichment(item):
+            return
+
+        word = str(item.get("單字", "")).strip()
+        language = str(item.get("language", "")).strip()
+        if not word:
+            return
+
+        try:
+            enrich_word_data_async(word)
+        except Exception:
+            return
+
+        self.collection_enrich_refresh_job = self.window.after(
+            1600,
+            lambda word=word, language=language: self.refresh_enriched_collection_entry(word, language, attempts_left=5)
+        )
+
+    def refresh_enriched_collection_entry(self, word, language, attempts_left):
+        self.collection_enrich_refresh_job = None
+
+        if self.current_entry is None:
+            return
+        if self.collection_has_unsaved_changes or self.collection_detail_loading:
+            return
+        if self.get_collection_entry_key(self.current_entry) != (word, language):
+            return
+
+        data = load_dictionary()
+        refreshed_item = None
+        for item in data:
+            if self.get_collection_entry_key(item) == (word, language):
+                refreshed_item = item
+                break
+
+        if refreshed_item is None:
+            return
+
+        if not self.collection_entry_needs_enrichment(refreshed_item):
+            self.current_entry = refreshed_item
+            self.show_collection_detail(refreshed_item)
+            self.refresh_collection_list_select_entry(refreshed_item)
+            return
+
+        if attempts_left > 0:
+            self.collection_enrich_refresh_job = self.window.after(
+                1600,
+                lambda: self.refresh_enriched_collection_entry(word, language, attempts_left - 1)
+            )
 
     def save_collection_entry(self, show_message=True, refresh_list=True):
         if self.current_entry is None:
