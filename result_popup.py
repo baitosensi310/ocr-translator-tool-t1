@@ -2,16 +2,19 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import threading
 
+from app_settings import load_settings
 from translator import translate
 from dictionary_manager import add_word, add_word_fast, enrich_word_data_async
 
 
 class ResultPopup:
-    def __init__(self, parent, source_text):
+    def __init__(self, parent, source_text, initial_translation=None, translation_mode=None):
         self.parent = parent
         self.source_text = source_text.strip()
         self.translated_text = ""
         self.translate_job_id = 0
+        self.initial_translation = initial_translation
+        self.translation_mode = translation_mode or load_settings().get("translation_mode", "local")
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("翻譯結果")
@@ -21,7 +24,7 @@ class ResultPopup:
         self.window.attributes("-topmost", True)
 
         self.build_ui()
-        self.update_content(self.source_text)
+        self.update_content(self.source_text, self.initial_translation)
 
     def build_ui(self):
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
@@ -189,9 +192,10 @@ class ResultPopup:
         )
         self.status_label.pack(fill=tk.X, pady=(10, 0))
 
-    def update_content(self, new_source_text):
+    def update_content(self, new_source_text, initial_translation=None):
         self.source_text = new_source_text.strip()
         self.translated_text = ""
+        self.initial_translation = initial_translation
 
         self.source_textbox.delete("1.0", tk.END)
         self.translated_textbox.delete("1.0", tk.END)
@@ -201,6 +205,12 @@ class ResultPopup:
         if not self.source_text:
             self.translated_textbox.insert("1.0", "沒有可翻譯文字")
             self.set_status("沒有可翻譯文字")
+            return
+
+        if initial_translation:
+            self.translated_text = str(initial_translation).strip()
+            self.translated_textbox.insert("1.0", self.translated_text)
+            self.set_status("翻譯完成")
             return
 
         self.translated_textbox.insert("1.0", "翻譯中，請稍候...")
@@ -221,7 +231,7 @@ class ResultPopup:
 
     def _translate_worker(self, text, job_id):
         try:
-            result = translate(text, "local")
+            result = translate(text, self.translation_mode)
         except Exception as e:
             result = f"翻譯失敗：{e}"
 

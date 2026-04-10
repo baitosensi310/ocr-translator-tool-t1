@@ -9,6 +9,7 @@ import pyperclip
 from tkinter import filedialog
 from tkinter import messagebox, ttk
 from PIL import Image, ImageSequence, ImageTk
+from app_settings import load_settings
 from translator import translate
 from dictionary_manager import (
     add_word_fast,
@@ -409,7 +410,8 @@ class DictionaryHome:
 
     def translate_area_text_worker(self, source_text):
         try:
-            result = translate(source_text, "local")
+            mode = load_settings().get("translation_mode", "local")
+            result = translate(source_text, mode)
         except Exception as e:
             result = f"翻譯失敗：{e}"
 
@@ -471,106 +473,136 @@ class DictionaryHome:
     # =========================================================
     # 首頁
     # =========================================================
+    def get_home_bookshelf_languages(self):
+        return [
+            ("日文字典", "ja", "OCR 日文、讀音、詞性、例句", "#9B6A46"),
+            ("英文字典", "en", "單字查詢、片語與基本分類", "#4F6F7D"),
+            ("中文字典", "zh", "中文詞語收藏與整理", "#7B5B86"),
+            ("新增字典", "new", "預留新的語言字典或分類", "#6B7A4D")
+        ]
+
+    def draw_bookshelf_home(self, canvas):
+        canvas.delete("all")
+        width = max(canvas.winfo_width(), 900)
+        height = max(canvas.winfo_height(), 460)
+
+        canvas.create_rectangle(0, 0, width, height, fill="#5A3A28", outline="")
+
+        for y in range(26, height, 32):
+            canvas.create_line(0, y, width, y, fill="#694732", width=1)
+
+        for x in range(48, width, 110):
+            canvas.create_line(x, 0, x, height, fill="#4D301F", width=1)
+
+        canvas.create_rectangle(38, 22, width - 38, height - 28, outline="#8A6547", width=5)
+        canvas.create_rectangle(56, 42, width - 56, height - 48, outline="#3F281C", width=2)
+
+        title_y = 42
+        canvas.create_text(
+            width / 2,
+            title_y,
+            text="選一本字典",
+            font=("Microsoft JhengHei", 24, "bold"),
+            fill="#FFF2DA"
+        )
+        canvas.create_text(
+            width / 2,
+            title_y + 38,
+            text="點選書本進入索引",
+            font=("Microsoft JhengHei", 12),
+            fill="#E7D6BE"
+        )
+
+        shelf_y = int(height * 0.73)
+        canvas.create_rectangle(78, shelf_y - 10, width - 78, shelf_y, fill="#3F281C", outline="")
+        canvas.create_rectangle(60, shelf_y, width - 60, shelf_y + 24, fill="#B27B50", outline="")
+        canvas.create_rectangle(78, shelf_y + 24, width - 78, shelf_y + 40, fill="#7A4B2E", outline="")
+        canvas.create_line(60, shelf_y, width - 60, shelf_y, fill="#D2A06D", width=2)
+
+        languages = self.get_home_bookshelf_languages()
+        total_book_width = min(width - 180, 720)
+        gap = 18
+        book_width = max(108, min(142, (total_book_width - gap * (len(languages) - 1)) / len(languages)))
+        start_x = (width - (book_width * len(languages) + gap * (len(languages) - 1))) / 2
+        bottom_y = shelf_y
+
+        for index, (title_text, code, _desc, color) in enumerate(languages):
+            book_height = 245 + (index % 2) * 26
+            x1 = start_x + index * (book_width + gap)
+            x2 = x1 + book_width
+            y2 = bottom_y
+            y1 = y2 - book_height
+            tag = f"home_book_{code}"
+
+            canvas.create_rectangle(
+                x1 + 8,
+                y1 + 10,
+                x2 + 8,
+                y2 + 8,
+                fill="#D4C4AE",
+                outline="",
+                tags=(tag, "home_book")
+            )
+            canvas.create_rectangle(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill=color,
+                outline="#5F432F",
+                width=2,
+                tags=(tag, "home_book")
+            )
+            canvas.create_rectangle(
+                x1 + 12,
+                y1 + 14,
+                x2 - 12,
+                y1 + 46,
+                fill="#FBF6EE",
+                outline="",
+                tags=(tag, "home_book")
+            )
+            canvas.create_line(x1 + 18, y1 + 58, x1 + 18, y2 - 18, fill="#F4EADC", width=2, tags=(tag, "home_book"))
+            canvas.create_line(x2 - 18, y1 + 58, x2 - 18, y2 - 18, fill="#F4EADC", width=2, tags=(tag, "home_book"))
+
+            vertical_title = "\n".join(title_text)
+            canvas.create_text(
+                (x1 + x2) / 2,
+                (y1 + y2) / 2 + 8,
+                text=vertical_title,
+                font=("Microsoft JhengHei", 18, "bold"),
+                fill="#FFF8EE",
+                justify="center",
+                tags=(tag, "home_book")
+            )
+            canvas.create_text(
+                (x1 + x2) / 2,
+                y1 + 30,
+                text="字典",
+                font=("Microsoft JhengHei", 10, "bold"),
+                fill="#4A2F21",
+                tags=(tag, "home_book")
+            )
+            canvas.tag_bind(tag, "<Button-1>", lambda event, lang=code, name=title_text: self.open_index_page(lang, name))
+            canvas.tag_bind(tag, "<Enter>", lambda event: canvas.config(cursor="hand2"))
+            canvas.tag_bind(tag, "<Leave>", lambda event: canvas.config(cursor=""))
+
     def build_home_page(self):
         self.clear_page()
 
-        outer = tk.Frame(self.main_frame, bg="#F5EAD9")
+        outer = tk.Frame(self.main_frame, bg="#5A3A28")
         outer.pack(fill=tk.BOTH, expand=True, padx=28, pady=28)
 
-        header = tk.Frame(outer, bg="#E7D6BE", bd=0)
-        header.pack(fill=tk.X, pady=(0, 20))
-
-        title = tk.Label(
-            header,
-            text="歡迎使用字典",
-            font=("Microsoft JhengHei", 24, "bold"),
-            bg="#E7D6BE",
-            fg="#4A2F21",
-            pady=18
+        bookshelf = tk.Canvas(
+            outer,
+            bg="#5A3A28",
+            highlightthickness=0,
+            bd=0
         )
-        title.pack()
+        bookshelf.pack(fill=tk.BOTH, expand=True)
+        bookshelf.bind("<Configure>", lambda event: self.draw_bookshelf_home(bookshelf))
 
-        subtitle = tk.Label(
-            header,
-            text="請先選擇要開啟的字典",
-            font=("Microsoft JhengHei", 12),
-            bg="#E7D6BE",
-            fg="#6A4A35",
-            pady=4
-        )
-        subtitle.pack()
-
-        lang_area = tk.Frame(outer, bg="#F5EAD9")
-        lang_area.pack(fill=tk.BOTH, expand=True)
-
-        lang_title = tk.Label(
-            lang_area,
-            text="字典入口",
-            font=("Microsoft JhengHei", 16, "bold"),
-            bg="#F5EAD9",
-            fg="#4A2F21",
-            anchor="w"
-        )
-        lang_title.pack(anchor="w", pady=(0, 14))
-
-        card_grid = tk.Frame(lang_area, bg="#F5EAD9")
-        card_grid.pack(fill=tk.BOTH, expand=True)
-
-        languages = [
-            ("日文字典", "ja", "適合 OCR 日文、讀音、詞性、例句"),
-            ("英文字典", "en", "適合單字查詢、片語與基本分類"),
-            ("中文字典", "zh", "適合中文詞語收藏與整理"),
-            ("新增字典", "new", "預留未來建立新的語言字典或分類")
-        ]
-
-        for i, (title_text, code, desc) in enumerate(languages):
-            card = tk.Frame(
-                card_grid,
-                bg="#E7D6BE",
-                bd=0,
-                highlightthickness=0,
-                padx=18,
-                pady=18
-            )
-            r = i // 2
-            c = i % 2
-            card.grid(row=r, column=c, sticky="nsew", padx=12, pady=12)
-
-            card_title = tk.Label(
-                card,
-                text=title_text,
-                font=("Microsoft JhengHei", 16, "bold"),
-                bg="#E7D6BE",
-                fg="#4A2F21"
-            )
-            card_title.pack(anchor="w")
-
-            card_desc = tk.Label(
-                card,
-                text=desc,
-                font=("Microsoft JhengHei", 11),
-                bg="#E7D6BE",
-                fg="#6A4A35",
-                justify="left",
-                wraplength=340,
-                pady=10
-            )
-            card_desc.pack(anchor="w")
-
-            open_btn = self.create_soft_button(
-                card,
-                text="開啟",
-                command=lambda lang=code, name=title_text: self.open_index_page(lang, name),
-                width=10
-            )
-            open_btn.pack(anchor="w", pady=(8, 0))
-
-        card_grid.grid_rowconfigure(0, weight=1)
-        card_grid.grid_rowconfigure(1, weight=1)
-        card_grid.grid_columnconfigure(0, weight=1)
-        card_grid.grid_columnconfigure(1, weight=1)
-
-        bottom = tk.Frame(outer, bg="#F5EAD9")
+        bottom = tk.Frame(outer, bg="#5A3A28")
         bottom.pack(fill=tk.X, pady=(14, 0))
 
         close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
@@ -602,26 +634,16 @@ class DictionaryHome:
         )
         title.pack()
 
-        subtitle = tk.Label(
-            header,
-            text="請選擇要進入的功能區",
-            font=("Microsoft JhengHei", 11),
-            bg="#E7D6BE",
-            fg="#6A4A35",
-            pady=4
-        )
-        subtitle.pack()
-
         center = tk.Frame(outer, bg="#F5EAD9")
         center.pack(fill=tk.BOTH, expand=True)
 
         options = [
-            ("1. 翻譯區", "只顯示原文與翻譯，可作為輕量閱讀區", self.open_translation_area),
-            ("2. 單字收藏", "整理收藏內容", self.open_collection_area),
-            ("3. 考試區", "之後用來測驗自己，目前先保留架構", self.open_exam_area),
+            ("1. 翻譯區", self.open_translation_area),
+            ("2. 單字收藏", self.open_collection_area),
+            ("3. 考試區", self.open_exam_area),
         ]
 
-        for title_text, desc, command in options:
+        for title_text, command in options:
             card = tk.Frame(
                 center,
                 bg="#EADCC8",
@@ -642,20 +664,8 @@ class DictionaryHome:
             )
             title_label.pack(anchor="w")
 
-            desc_label = tk.Label(
-                card,
-                text=desc,
-                font=("Microsoft JhengHei", 11),
-                bg="#EADCC8",
-                fg="#6A4A35",
-                justify="left",
-                wraplength=860,
-                pady=8
-            )
-            desc_label.pack(anchor="w")
-
             enter_btn = self.create_soft_button(card, "進入", command, width=10)
-            enter_btn.pack(anchor="w", pady=(8, 0))
+            enter_btn.pack(anchor="w", pady=(14, 0))
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X, pady=(16, 0))
