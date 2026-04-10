@@ -12,7 +12,6 @@ from PIL import Image, ImageSequence, ImageTk
 from translator import translate
 from dictionary_manager import (
     add_word_fast,
-    delete_word,
     enrich_word_data_async,
     load_dictionary,
     save_dictionary,
@@ -37,6 +36,9 @@ class DictionaryHome:
         self.collection_image_cache = {}
         self.collection_current_image_path = ""
         self.collection_image_path_var = tk.StringVar()
+        self.collection_autosave_job = None
+        self.collection_detail_loading = False
+        self.collection_has_unsaved_changes = False
         self.collection_split_apply_job = None
         self.collection_pages = []
         self.collection_resize_refresh_job = None
@@ -58,6 +60,7 @@ class DictionaryHome:
         self.window.geometry("1320x920+220+80")
         self.window.minsize(1180, 760)
         self.window.configure(bg="#F5EAD9")
+        self.window.protocol("WM_DELETE_WINDOW", self.close_dictionary_window)
 
         self.main_frame = tk.Frame(self.window, bg="#F5EAD9")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -325,6 +328,20 @@ class DictionaryHome:
             self.parent_window.withdraw()
         except Exception:
             messagebox.showwarning("提示", "目前無法隱藏工具列")
+
+    def close_dictionary_window(self):
+        if self.collection_has_unsaved_changes and self.current_entry is not None:
+            answer = messagebox.askyesnocancel(
+                "尚未保存",
+                "目前單字內容尚未保存，要先保存再關閉嗎？",
+                parent=self.window
+            )
+            if answer is None:
+                return
+            if answer:
+                self.save_collection_entry(show_message=False, refresh_list=False)
+
+        self.window.destroy()
 
     def get_external_translation_context(self):
         if hasattr(self.parent, "get_current_translation_context"):
@@ -868,7 +885,7 @@ class DictionaryHome:
             tree_frame,
             show="tree",
             yscrollcommand=tree_scrollbar.set,
-            selectmode="browse"
+            selectmode="extended"
         )
         self.collection_tree.pack(fill=tk.BOTH, expand=True)
         self.collection_tree.bind("<Configure>", self.on_collection_tree_resized)
@@ -876,6 +893,7 @@ class DictionaryHome:
         tree_scrollbar.config(command=self.collection_tree.yview)
 
         self.collection_tree.bind("<<TreeviewSelect>>", self.on_select_collection_word)
+        self.collection_tree.bind("<Button-3>", self.show_collection_tree_context_menu)
 
         page_bar = tk.Frame(left_panel, bg="#EADCC8")
         page_bar.pack(fill=tk.X, padx=12, pady=(0, 12))
@@ -993,7 +1011,12 @@ class DictionaryHome:
         image_add_btn = self.create_soft_button(image_header, "放入圖片", self.choose_collection_image, width=8)
         image_add_btn.pack(side=tk.RIGHT)
 
-        image_clear_btn = self.create_soft_button(image_header, "清除圖片", self.clear_collection_image, width=8)
+        image_clear_btn = self.create_soft_button(
+            image_header,
+            "清除圖片",
+            lambda: self.clear_collection_image(auto_save=True),
+            width=8
+        )
         image_clear_btn.pack(side=tk.RIGHT, padx=(0, 8))
 
         self.collection_image_info_entry = tk.Entry(
@@ -1034,6 +1057,7 @@ class DictionaryHome:
         self.collection_tag_entry = self.create_labeled_entry(right_page, "分類 tag（用逗號分隔）")
         self.collection_example_text = self.create_labeled_text(right_page, "例句（每行一個）", 5)
         self.collection_usage_text = self.create_labeled_text(right_page, "用法", 5)
+        self.bind_collection_autosave_events()
 
         bottom = tk.Frame(outer, bg="#F5EAD9")
         bottom.pack(fill=tk.X)
@@ -1044,22 +1068,7 @@ class DictionaryHome:
         back_btn = self.create_footer_button(left_actions, "返回索引", self.build_index_page_callback, primary=True)
         back_btn.pack(side=tk.LEFT)
 
-        refresh_btn = self.create_footer_button(left_actions, "重新整理", self.reload_collection_area)
-        refresh_btn.pack(side=tk.LEFT, padx=(12, 0))
-
-        save_btn = self.create_footer_button(left_actions, "儲存內容", self.save_collection_entry)
-        save_btn.pack(side=tk.LEFT, padx=(12, 0))
-
-        middle_actions = tk.Frame(bottom, bg="#F5EAD9")
-        middle_actions.pack(side=tk.LEFT, padx=18)
-
-        delete_btn = self.create_footer_button(middle_actions, "刪除單字", self.delete_current_word)
-        delete_btn.pack(side=tk.LEFT)
-
-        change_lang_btn = self.create_footer_button(middle_actions, "切換語言", self.change_current_word_language)
-        change_lang_btn.pack(side=tk.LEFT, padx=(12, 0))
-
-        close_btn = self.create_footer_button(bottom, "關閉", self.window.destroy)
+        close_btn = self.create_footer_button(bottom, "關閉", self.close_dictionary_window)
         close_btn.pack(side=tk.RIGHT)
 
         self.refresh_collection_list()
@@ -1111,6 +1120,63 @@ class DictionaryHome:
         )
         text_widget.pack(fill=tk.X, padx=14, pady=(0, 10))
         return text_widget
+
+    def bind_collection_autosave_events(self):
+        entry_widgets = [
+            self.collection_reading_entry,
+            self.collection_pos_entry,
+            self.collection_tag_entry,
+            self.collection_image_info_entry,
+        ]
+        text_widgets = [
+            self.collection_original_text,
+            self.collection_note_text,
+            self.collection_translation_text,
+            self.collection_english_text,
+            self.collection_example_text,
+            self.collection_usage_text,
+        ]
+
+        for widget in entry_widgets:
+            widget.bind("<KeyRelease>", self.schedule_collection_autosave)
+            widget.bind("<Return>", self.save_collection_entry_from_event)
+            widget.bind("<FocusOut>", self.save_collection_entry_from_event)
+
+        for widget in text_widgets:
+            widget.bind("<KeyRelease>", self.schedule_collection_autosave)
+            widget.bind("<Return>", self.schedule_collection_autosave_after_text_return)
+            widget.bind("<FocusOut>", self.save_collection_entry_from_event)
+
+    def schedule_collection_autosave_after_text_return(self, event=None):
+        self.window.after_idle(lambda: self.schedule_collection_autosave(delay=50))
+
+    def schedule_collection_autosave(self, event=None, delay=700):
+        if self.collection_detail_loading or self.current_entry is None:
+            return
+
+        self.collection_has_unsaved_changes = True
+        self.cancel_collection_autosave()
+
+        self.collection_autosave_job = self.window.after(
+            delay, lambda: self.save_collection_entry(show_message=False, refresh_list=True)
+        )
+
+    def cancel_collection_autosave(self):
+        if self.collection_autosave_job is not None:
+            try:
+                self.window.after_cancel(self.collection_autosave_job)
+            except Exception:
+                pass
+            self.collection_autosave_job = None
+
+    def save_collection_entry_from_event(self, event=None):
+        if self.collection_detail_loading or self.current_entry is None:
+            return
+
+        self.cancel_collection_autosave()
+
+        self.collection_has_unsaved_changes = True
+        self.save_collection_entry(show_message=False, refresh_list=True)
 
     def normalize_collection_split(self, value):
         default = [0.18, 0.32, 0.50]
@@ -1200,6 +1266,8 @@ class DictionaryHome:
         self.collection_current_image_path = image_path
         self.show_collection_image(image_path)
         self.collection_image_path_var.set("")
+        self.collection_has_unsaved_changes = True
+        self.save_collection_entry(show_message=False, refresh_list=True)
 
     def store_collection_image(self, source_path):
         source_path = str(source_path).strip()
@@ -1224,7 +1292,7 @@ class DictionaryHome:
 
         return os.path.relpath(target_path, os.getcwd())
 
-    def clear_collection_image(self):
+    def clear_collection_image(self, auto_save=False):
         self.stop_collection_image_animation()
         self.collection_current_image_path = ""
         self.collection_image_preview = None
@@ -1233,6 +1301,9 @@ class DictionaryHome:
         self.collection_image_path_var.set("")
         if hasattr(self, "collection_image_preview_label"):
             self.collection_image_preview_label.config(image="", text="尚未放入圖片")
+        if auto_save:
+            self.collection_has_unsaved_changes = True
+            self.save_collection_entry(show_message=False, refresh_list=True)
 
     def stop_collection_image_animation(self):
         if self.collection_image_animation_job is not None:
@@ -1325,6 +1396,12 @@ class DictionaryHome:
             self.collection_image_frames = []
             self.collection_image_preview_label.config(image="", text="圖片載入失敗")
             self.collection_image_path_var.set("圖片載入失敗，請確認路徑")
+
+    def get_collection_entry_key(self, item):
+        return (
+            str(item.get("單字", "")).strip(),
+            str(item.get("language", "")).strip()
+        )
 
 
     # =========================================================
@@ -2284,25 +2361,148 @@ class DictionaryHome:
             text=f"第 {self.collection_page} 頁 / 共 {total_pages} 頁"
         )
 
+    def refresh_collection_list_select_entry(self, entry):
+        entry_key = self.get_collection_entry_key(entry)
+        if not entry_key[0]:
+            self.refresh_collection_list()
+            return
+
+        self.refresh_collection_list()
+
+        for item_id, item in self.tree_item_to_entry.items():
+            if self.get_collection_entry_key(item) != entry_key:
+                continue
+
+            self.collection_tree.selection_set(item_id)
+            self.collection_tree.focus(item_id)
+            self.collection_tree.see(item_id)
+            break
+
     def on_select_collection_word(self, event=None):
         if not hasattr(self, "collection_tree"):
             return
+
+        if self.current_entry is not None and not self.collection_detail_loading:
+            self.save_collection_entry(show_message=False, refresh_list=False)
 
         selection = self.collection_tree.selection()
         if not selection:
             return
 
-        selected_id = selection[0]
-
-        if selected_id not in self.tree_item_to_entry:
+        selected_id = self.get_first_selected_collection_entry_id(selection)
+        if not selected_id:
             return
 
         self.current_entry = self.tree_item_to_entry[selected_id]
         self.show_collection_detail(self.current_entry)
 
+    def get_first_selected_collection_entry_id(self, selection=None):
+        if selection is None:
+            selection = self.collection_tree.selection()
+
+        for item_id in selection:
+            if item_id in self.tree_item_to_entry:
+                return item_id
+        return ""
+
+    def get_selected_collection_entries(self):
+        if not hasattr(self, "collection_tree"):
+            return []
+
+        entries = []
+        seen = set()
+        for item_id in self.collection_tree.selection():
+            item = self.tree_item_to_entry.get(item_id)
+            if not item:
+                continue
+
+            key = (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            if not key[0] or key in seen:
+                continue
+
+            seen.add(key)
+            entries.append(item)
+
+        return entries
+
+    def get_existing_dictionary_language_options(self):
+        options = [
+            ("ja", "日文"),
+            ("zh", "中文"),
+            ("en", "英文"),
+            ("ko", "韓文")
+        ]
+        return [(code, label) for code, label in options if code != "new"]
+
+    def get_existing_collection_tag_options(self):
+        selected_language = (self.selected_language or "").strip()
+        tags = []
+        seen = set()
+
+        for item in self.dictionary_data:
+            language = str(item.get("language", "")).strip()
+            if selected_language and selected_language != "new" and language != selected_language:
+                continue
+
+            for tag in self.get_normalized_tags(item):
+                if tag == "未分類" or tag in seen:
+                    continue
+                tags.append(tag)
+                seen.add(tag)
+
+        return sorted(tags)
+
+    def show_collection_tree_context_menu(self, event):
+        if not hasattr(self, "collection_tree"):
+            return "break"
+
+        clicked_id = self.collection_tree.identify_row(event.y)
+        if not clicked_id or clicked_id not in self.tree_item_to_entry:
+            return "break"
+
+        if clicked_id not in self.collection_tree.selection():
+            self.collection_tree.selection_set(clicked_id)
+            self.collection_tree.focus(clicked_id)
+
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label="刪除選取單字", command=self.delete_selected_collection_words)
+
+        tag_menu = tk.Menu(menu, tearoff=0)
+        tag_options = self.get_existing_collection_tag_options()
+        if tag_options:
+            for tag in tag_options:
+                tag_menu.add_command(
+                    label=tag,
+                    command=lambda value=tag: self.add_tag_to_selected_collection_words(value)
+                )
+        else:
+            tag_menu.add_command(label="目前沒有分類", state=tk.DISABLED)
+        menu.add_cascade(label="加入分類", menu=tag_menu)
+
+        language_menu = tk.Menu(menu, tearoff=0)
+        for code, label in self.get_existing_dictionary_language_options():
+            language_menu.add_command(
+                label=label,
+                command=lambda value=code: self.change_selected_collection_words_language(value)
+            )
+        menu.add_cascade(label="切換語言", menu=language_menu)
+
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+        return "break"
+
     def show_collection_detail(self, item):
         if not hasattr(self, "collection_original_text"):
             return
+
+        self.cancel_collection_autosave()
+        self.collection_detail_loading = True
 
         self.collection_original_text.delete("1.0", tk.END)
         self.collection_note_text.delete("1.0", tk.END)
@@ -2332,10 +2532,14 @@ class DictionaryHome:
         self.collection_usage_text.insert("1.0", item.get("用法", ""))
         self.show_collection_image(item.get("圖片", ""))
         self.schedule_apply_collection_split(item.get("左頁分割", [0.18, 0.32, 0.50]))
+        self.collection_detail_loading = False
 
     def show_empty_collection_detail(self):
         if not hasattr(self, "collection_original_text"):
             return
+
+        self.cancel_collection_autosave()
+        self.collection_detail_loading = True
 
         self.collection_original_text.delete("1.0", tk.END)
         self.collection_note_text.delete("1.0", tk.END)
@@ -2347,17 +2551,21 @@ class DictionaryHome:
         self.collection_example_text.delete("1.0", tk.END)
         self.collection_usage_text.delete("1.0", tk.END)
 
-        self.collection_original_text.insert("1.0", "請先從左邊選一個單字")
-        self.collection_note_text.insert("1.0", "可在這裡記錄補充筆記")
+        self.collection_original_text.insert("1.0", "")
+        self.collection_note_text.insert("1.0", "")
         self.collection_translation_text.insert("1.0", "")
         self.collection_english_text.insert("1.0", "")
         self.clear_collection_image()
         self.schedule_apply_collection_split([0.18, 0.32, 0.50])
+        self.collection_detail_loading = False
 
-    def save_collection_entry(self):
+    def save_collection_entry(self, show_message=True, refresh_list=True):
         if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
+            if show_message:
+                messagebox.showwarning("提示", "請先從左邊選一個單字")
             return
+
+        self.cancel_collection_autosave()
 
         original = self.collection_original_text.get("1.0", tk.END).strip()
         note = self.collection_note_text.get("1.0", tk.END).strip()
@@ -2372,7 +2580,8 @@ class DictionaryHome:
         split_value = self.get_current_collection_split()
 
         if not original:
-            messagebox.showwarning("提示", "單字不能空白")
+            if show_message:
+                messagebox.showwarning("提示", "單字不能空白")
             return
 
         tags = self.split_collection_tag_text(tag_raw)
@@ -2387,7 +2596,8 @@ class DictionaryHome:
                 break
 
         if target_index is None:
-            messagebox.showerror("錯誤", "找不到要儲存的單字")
+            if show_message:
+                messagebox.showerror("錯誤", "找不到要儲存的單字")
             return
 
         data[target_index]["單字"] = original
@@ -2405,8 +2615,11 @@ class DictionaryHome:
         save_dictionary(data)
 
         self.current_entry = data[target_index]
-        self.refresh_collection_list()
-        messagebox.showinfo("成功", "已儲存單字內容")
+        self.collection_has_unsaved_changes = False
+        if refresh_list:
+            self.refresh_collection_list_select_entry(self.current_entry)
+        if show_message:
+            messagebox.showinfo("成功", "已儲存單字內容")
 
     def reload_collection_area(self):
         self.collection_search_var.set("")
@@ -2417,114 +2630,171 @@ class DictionaryHome:
         self.show_empty_collection_detail()
     
     def delete_current_word(self):
-        if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
+        self.delete_selected_collection_words()
+
+    def add_tag_to_selected_collection_words(self, tag):
+        tag = str(tag).strip()
+        selected_entries = self.get_selected_collection_entries()
+        if not tag or not selected_entries:
+            messagebox.showwarning("提示", "請先選取要加入分類的單字")
             return
 
-        word = self.current_entry.get("單字", "").strip()
-        if not word:
-            messagebox.showwarning("提示", "目前沒有可刪除的單字")
+        selected_keys = {
+            (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            for item in selected_entries
+        }
+
+        data = load_dictionary()
+        changed_count = 0
+        last_changed_item = None
+
+        for item in data:
+            key = (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            if key not in selected_keys:
+                continue
+
+            tags = self.get_normalized_tags(item)
+            if tags == ["未分類"]:
+                tags = []
+            if tag in tags:
+                continue
+
+            tags.append(tag)
+            item["分類"] = tags
+            changed_count += 1
+            last_changed_item = item
+
+        if not changed_count:
+            messagebox.showinfo("提示", "選取的單字已經有這個分類")
             return
 
-        confirm = messagebox.askyesno("確認刪除", f"確定要刪除「{word}」嗎？")
+        save_dictionary(data)
+        self.current_entry = last_changed_item
+        self.refresh_collection_list_select_entry(self.current_entry)
+        if self.current_entry is not None:
+            self.show_collection_detail(self.current_entry)
+        messagebox.showinfo("成功", f"已加入分類到 {changed_count} 個單字")
+
+    def delete_selected_collection_words(self):
+        selected_entries = self.get_selected_collection_entries()
+        if not selected_entries:
+            messagebox.showwarning("提示", "請先選取要刪除的單字")
+            return
+
+        words = [str(item.get("單字", "")).strip() for item in selected_entries]
+        if len(words) == 1:
+            confirm_text = f"確定要刪除「{words[0]}」嗎？"
+        else:
+            confirm_text = f"確定要刪除選取的 {len(words)} 個單字嗎？"
+
+        confirm = messagebox.askyesno("確認刪除", confirm_text)
         if not confirm:
             return
 
-        result = delete_word(word)
+        selected_keys = {
+            (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            for item in selected_entries
+        }
+        data = load_dictionary()
+        new_data = []
+        deleted_count = 0
 
-        if result == "已刪除單字":
+        for item in data:
+            key = (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            if key in selected_keys:
+                deleted_count += 1
+                continue
+            new_data.append(item)
+
+        if deleted_count:
+            save_dictionary(new_data)
             self.current_entry = None
             self.refresh_collection_list()
             self.show_empty_collection_detail()
-            messagebox.showinfo("成功", result)
+            messagebox.showinfo("成功", f"已刪除 {deleted_count} 個單字")
         else:
-            messagebox.showerror("錯誤", result)
+            messagebox.showerror("錯誤", "找不到要刪除的單字")
 
     def change_current_word_language(self):
-        if self.current_entry is None:
-            messagebox.showwarning("提示", "請先從左邊選一個單字")
+        selected_entries = self.get_selected_collection_entries()
+        if not selected_entries and self.current_entry is not None:
+            selected_entries = [self.current_entry]
+
+        if not selected_entries:
+            messagebox.showwarning("提示", "請先選取要切換語言的單字")
             return
 
-        word = self.current_entry.get("單字", "").strip()
-        current_language = self.current_entry.get("language", "unknown").strip()
+        self.change_selected_collection_words_language_menu(selected_entries)
 
-        if not word:
-            messagebox.showwarning("提示", "目前沒有可切換的單字")
-            return
-
-        dialog = tk.Toplevel(self.window)
-        dialog.title("切換語言")
-        dialog.geometry("380x180")
-        dialog.resizable(False, False)
-        dialog.transient(self.window)
-        dialog.grab_set()
-        dialog.configure(bg="#F5EAD9")
-
-        label = tk.Label(
-            dialog,
-            text=f"「{word}」目前語言：{current_language}\n請選擇要改成哪個語言：",
-            font=("Microsoft JhengHei", 11),
-            bg="#F5EAD9",
-            fg="#4A2F21",
-            justify="center"
-        )
-        label.pack(pady=(20, 16))
-
-        button_frame = tk.Frame(dialog, bg="#F5EAD9")
-        button_frame.pack()
-
-        options = [
-            ("ja", "日文"),
-            ("zh", "中文"),
-            ("en", "英文"),
-            ("ko", "韓文")
-        ]
-
-        for code, text in options:
-            btn = tk.Button(
-                button_frame,
-                text=text,
-                font=("Microsoft JhengHei", 10, "bold"),
-                bg="#8B5E3C",
-                fg="#FFF8EE",
-                activebackground="#A06A43",
-                activeforeground="#FFF8EE",
-                relief="flat",
-                bd=0,
-                padx=14,
-                pady=8,
-                command=lambda c=code: self.apply_language_change(c, dialog)
+    def change_selected_collection_words_language_menu(self, selected_entries):
+        menu = tk.Menu(self.window, tearoff=0)
+        for code, label in self.get_existing_dictionary_language_options():
+            menu.add_command(
+                label=label,
+                command=lambda value=code: self.change_selected_collection_words_language(value, selected_entries)
             )
-            btn.pack(side=tk.LEFT, padx=6)
-    
-    def apply_language_change(self, new_language, dialog):
-        if self.current_entry is None:
-            dialog.destroy()
+
+        try:
+            x = self.window.winfo_pointerx()
+            y = self.window.winfo_pointery()
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def change_selected_collection_words_language(self, new_language, selected_entries=None):
+        if selected_entries is None:
+            selected_entries = self.get_selected_collection_entries()
+
+        if not selected_entries:
+            messagebox.showwarning("提示", "請先選取要切換語言的單字")
             return
 
-        word = self.current_entry.get("單字", "").strip()
-        if not word:
-            dialog.destroy()
-            return
+        selected_keys = {
+            (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            for item in selected_entries
+        }
 
         data = load_dictionary()
+        changed_count = 0
+        last_changed_item = None
 
-        target_index = None
-        for i, item in enumerate(data):
-            if item.get("單字", "") == word:
-                target_index = i
-                break
+        for item in data:
+            key = (
+                str(item.get("單字", "")).strip(),
+                str(item.get("language", "")).strip()
+            )
+            if key not in selected_keys:
+                continue
 
-        if target_index is None:
-            dialog.destroy()
-            messagebox.showerror("錯誤", "找不到要修改的單字")
+            if str(item.get("language", "")).strip() == new_language:
+                continue
+
+            item["language"] = new_language
+            changed_count += 1
+            last_changed_item = item
+
+        if not changed_count:
+            messagebox.showinfo("提示", "選取的單字已經是這個語言")
             return
 
-        data[target_index]["language"] = new_language
         save_dictionary(data)
-
-        self.current_entry = data[target_index]
-        dialog.destroy()
+        self.current_entry = last_changed_item
         self.refresh_collection_list()
-        self.show_collection_detail(self.current_entry)
-        messagebox.showinfo("成功", f"已切換為 {new_language}")
+        if self.current_entry is not None:
+            self.show_collection_detail(self.current_entry)
+        messagebox.showinfo("成功", f"已切換 {changed_count} 個單字")
